@@ -179,6 +179,9 @@ private:
 	double *data;
 	std::vector<int> index_st;
 
+	std::vector<std::vector<bool>> parity_st; //false - even, true - odd, empty - no doubling
+	std::vector<std::vector<bool>> parity_end;
+
 	void reallocate_partitioning(const Domain_Partitioning &part){
 		this->Domain_Partitioning::operator=(part);
 		int ndomains = 0, npoints_old = npoints;
@@ -200,7 +203,8 @@ public:
 	const Domain_Partitioning &partition;
 
 	Container(int nfunci, const Domain_Partitioning &parti):
-		Domain_Partitioning(parti), partition(*this), nfunc(nfunci), npoints(0)
+		Domain_Partitioning(parti), partition(*this), nfunc(nfunci), npoints(0),
+		parity_st(parti.n_dim), parity_end(parti.n_dim)
 	{
 		int ndomains = 0;
 		for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
@@ -217,6 +221,8 @@ public:
 		Domain_Partitioning(get_partitioning_from_data(folder_name)), partition(*this), npoints(0),
 		nfunc(count_func_files(folder_name))
 	{
+		parity_st.resize(n_dim);
+		parity_end.resize(n_dim);
 		int ndomains = 0;
 		for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
 			index_st.push_back(npoints);
@@ -229,11 +235,52 @@ public:
 	}
 
 	Container(const Container &cont):
-		Domain_Partitioning(cont), partition(*this), nfunc(cont.nfunc), npoints(cont.npoints), index_st(cont.index_st)
+		Domain_Partitioning(cont), partition(*this), nfunc(cont.nfunc), npoints(cont.npoints), index_st(cont.index_st),
+		parity_st(cont.parity_st), parity_end(cont.parity_end)
 	{
 		data = new double[npoints];
 		for(int i = 0; i < npoints; i++) data[i] = cont.data[i];
 	};
+
+	void set_doubling_begin(unsigned int dim, const std::vector<bool> &parity){
+		if(dim >= n_dim){
+			std::cout << "Wrong dimension number" << std::endl;
+			throw("Wrong domain number");
+		}
+		if(parity.size() != nfunc){
+			std::cout << "Wrong number of functions" << std::endl;
+			throw("Wrong number of functions");
+		}
+		if(!parity_end[dim].empty()){
+			for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+				if(std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL){
+					std::cout << "Cannot set doubling on both sized of the same domain" << std::endl;
+					throw("Cannot set doubling on both sized of the same domain");
+				}
+			}
+		}
+		parity_st[dim] = parity;
+	}
+
+	void set_doubling_end(unsigned int dim, const std::vector<bool> &parity){
+		if(dim >= n_dim){
+			std::cout << "Wrong dimension number" << std::endl;
+			throw("Wrong domain number");
+		}
+		if(parity.size() != nfunc){
+			std::cout << "Wrong number of functions" << std::endl;
+			throw("Wrong number of functions");
+		}
+		if(!parity_st[dim].empty()){
+			for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+				if(std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL){
+					std::cout << "Cannot set doubling on both sized of the same domain" << std::endl;
+					throw("Cannot set doubling on both sized of the same domain");
+				}
+			}
+		}
+		parity_end[dim] = parity;
+	}
 
 	Container &operator=(const Container &cont){
 		this->Domain_Partitioning::operator=(cont);
@@ -244,6 +291,8 @@ public:
 			data = new double[npoints];
 		}
 		index_st = cont.index_st;
+		parity_st.assign(cont.parity_st.begin(), cont.parity_st.end());
+		parity_end.assign(cont.parity_end.begin(), cont.parity_end.end());
 		for(int i = 0; i < npoints; i++) data[i] = cont.data[i];
 		return *this;
 	}

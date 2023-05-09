@@ -22,7 +22,23 @@ void Container::save(const std::string &folder_name) const{
 	std::ofstream *out_f = new std::ofstream[nfunc];
 	for(int fn = 0; fn < nfunc; fn++){
 		out_f[fn].open(folder_name + "/f" + std::to_string(fn) + ".dat");
-		out_f[fn] << std::setprecision(15) << std::fixed;
+		//Recording parity
+		for(int dm = 0; dm < n_dim; ++dm){
+			if(dm) out_f[fn] << ',';
+			if(parity_st[dm].empty())
+				out_f[fn] << 'n' << ',';
+			else if(parity_st[dm][fn])
+				out_f[fn] << 'o' << ',';
+			else
+				out_f[fn] << 'e' << ',';
+			if(parity_end[dm].empty())
+				out_f[fn] << 'n';
+			else if(parity_end[dm][fn])
+				out_f[fn] << 'o';
+			else
+				out_f[fn] << 'e';
+		}
+		out_f[fn] << std::setprecision(15) << std::fixed << std::endl;
 	}
 
 	int indx = 0;
@@ -72,12 +88,24 @@ Domain_Partitioning get_partitioning_from_data(const std::string &folder_name){
 		throw("No data file found");
 	}
 
+	std::string::size_type sztp;
 	std::vector<std::string> domain_data;
 	int nlines = 0;
-	std::string line;
+	std::string line, token;
 	while(1){
 		if(!std::getline(in, line)) break;
 		if(line.empty()) break;
+
+		//Skipping parity description line
+		std::istringstream iss(line);
+		std::getline(iss, token, ',');
+		try{
+			std::stod(token, &sztp);
+		}
+		catch(std::invalid_argument const& ex){
+			continue;
+		}
+
 		if((nlines++)%2 == 0) domain_data.push_back(line);
 	}
 
@@ -133,13 +161,73 @@ void Container::load(const std::string &folder_name){
 		}
 	}
 
+	std::string line, piece;
+	std::string::size_type sztp;
+	//Reading parity description
+	int ndim_est = 0;
+	parity_st.clear(); parity_end.clear();
+	for(int fn = 0; fn < nfunc; fn++){
+		std::getline(in_f[fn], line);
+		std::istringstream iss(line);
+		std::getline(iss, piece, ',');
+		try{
+			std::stod(piece, &sztp);
+		}
+		catch(std::invalid_argument const& ex){
+			iss.seekg(0, iss.beg);
+			int cnt = 0;
+			while(std::getline(iss, piece, ',')){
+				if(piece.compare("n") == 0){
+					if(cnt%2 && cnt/2 >= parity_end.size()) parity_end.push_back({});
+					else if(cnt/2 >= parity_end.size()) parity_st.push_back({});
+				}
+				else if(piece.compare("e") == 0){
+					if(cnt%2){
+						if(cnt/2 >= parity_end.size()) parity_end.push_back({false});
+						else parity_end[cnt/2].push_back(false);
+					}
+					else{
+						if(cnt/2 >= parity_st.size()) parity_st.push_back({false});
+						else parity_st[cnt/2].push_back(false);
+					}
+				}
+				else if(piece.compare("o") == 0){
+					if(cnt%2){
+						if(cnt/2 >= parity_end.size()) parity_end.push_back({true});
+						else parity_end[cnt/2].push_back(true);
+					}
+					else{
+						if(cnt/2 >= parity_st.size()) parity_st.push_back({true});
+						else parity_st[cnt/2].push_back(true);
+					}
+				}
+				else{
+					std::cout << "Wrong parity flag read: " << piece << std::endl;
+					throw("Wrong parity flag read");
+				}
+				++cnt;
+			}
+			if(ndim_est == 0 && cnt) ndim_est = cnt;
+			if(ndim_est != cnt){
+				std::cout << "Parity data corrupted" << std::endl;
+				throw("Parity data corrupted");
+			}
+			continue;
+		}
+		in_f[fn].seekg(0, in_f[fn].beg);
+	}
+	for(int dm = 0; dm < parity_st.size(); ++dm){
+		if((parity_st[dm].size() && parity_st[dm].size() != nfunc) || (parity_end[dm].size() && parity_end[dm].size() != nfunc)){
+			std::cout << "Parity data corrupted" << std::endl;
+			throw("Parity data corrupted");
+		}
+	}
 
 	for(int fn = 0; fn < nfunc; fn++){
 		std::vector<std::string> domain_data;
 		std::vector<std::string> function_data;
 
 		int nlines = 0;
-		std::string line;
 		while(1){
 			if(!std::getline(in_f[fn], line)) break;
 			if(line.empty()) break;
@@ -159,11 +247,21 @@ void Container::load(const std::string &folder_name){
 		else if(!(*this == Domain_Partitioning(domain_data))){
 			std::cout << "Data file " << fn << " domain structure does not match container structure" << std::endl;
 			throw("Data file domain structure does not match container structure");
-		}	
+		}
+		else if(parity_st.size() != n_dim){
+			if(parity_st.size() == 0){
+				parity_st.resize(n_dim);
+				parity_end.resize(n_dim);
+				std::fill<std::vector<std::vector<bool>>::iterator,std::vector<bool>>(parity_st.begin(), parity_st.end(), {});
+				std::fill<std::vector<std::vector<bool>>::iterator,std::vector<bool>>(parity_end.begin(), parity_end.end(), {});
+			}
+			else{
+				std::cout << "Data file " << fn << " parity structure does not match number of dimensions" << std::endl;
+				throw("Data file parity structure does not match number of dimensions");
+			}
+		}
 
 		const Bulk_Domain *dom = first_bulk_domain;
-		std::string::size_type sztp;
-		std::string piece;
 		while(dom != NULL){
 			int dm = dom->bulk_domain_number;
 			std::istringstream iss(function_data[dm]);
