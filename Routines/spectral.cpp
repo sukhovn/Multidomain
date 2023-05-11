@@ -166,6 +166,17 @@ double cheb_Dn_el(int npoint, int ord, int i, int j){//Very inefficient, only wo
 	return tmp;
 }
 
+double cheb_Dn_double(bool side, bool parity, int n, int ord, int i, int j){
+	if(side){
+		if(parity) return cheb_Dn_el(2*n-1, ord, 2*n-i-1, 2*n-j-1) - cheb_Dn_el(2*n-1, ord, 2*n-i-1, j);
+		else return cheb_Dn_el(2*n-1, ord, 2*n-i-1, 2*n-j-1) + cheb_Dn_el(2*n-1, ord, 2*n-i-1, j);
+	}
+	else{
+		if(parity) return cheb_Dn_el(2*n-1, ord, n-i-1, n-j-1) - cheb_Dn_el(2*n-1, ord, n-i-1, n+j);
+		else return cheb_Dn_el(2*n-1, ord, n-i-1, n-j-1) + cheb_Dn_el(2*n-1, ord, n-i-1, n+j);
+	}
+}
+
 double cheb_Ex_el(int n, int j, double xst, double xend, double x){
 	double xc = (xst + xend - 2*x)/(xend - xst);
 	if(xc <= -1.0) xc = M_PI;

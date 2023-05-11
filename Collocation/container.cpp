@@ -126,24 +126,46 @@ void Collocation_Matrix::row_add_Dn_factor(unsigned int row_dm, const std::vecto
 	std::vector<unsigned int> ind_tmp(ind);
 	if(der2 < der1){int tmp = der1; der1 = der2; der2 = tmp;}
 
+
 	double factor;
-	int dim2_n = dim_nums[dm][der2]-1;
+	int dim2_n = dim_nums[dm][der2];
 	if(der1 < 0 || der1 == der2){
 		int ord = (der1 == der2 ? 2 : 1);
-		factor = coef * std::pow(2.0/(doms_end[dm][der2] - doms_start[dm][der2]), ord);
-		for(ind_tmp[der2] = 0; ind_tmp[der2] <= dim2_n; ind_tmp[der2]++){
-			matr(row_index, index(dm, ind_tmp, fn)) += factor * cheb_Dn_el(dim2_n, ord, dim2_n - ind[der2], dim2_n - ind_tmp[der2]);
+		std::pair<int, bool> parity = check_parity(dm, der2, fn);
+		if(parity.first){
+			factor = coef*std::pow(1.0/(doms_end[dm][der2] - doms_start[dm][der2]), ord);
+			for(ind_tmp[der2] = 0; ind_tmp[der2] < dim2_n; ind_tmp[der2]++){
+				matr(row_index, index(dm, ind_tmp, fn)) += factor*cheb_Dn_double(parity.first == 2, parity.second, dim2_n, ord, ind[der2], ind_tmp[der2]);
+			}
+		}
+		else{
+			factor = coef * std::pow(2.0/(doms_end[dm][der2] - doms_start[dm][der2]), ord);
+			for(ind_tmp[der2] = 0; ind_tmp[der2] < dim2_n; ind_tmp[der2]++){
+				matr(row_index, index(dm, ind_tmp, fn)) += factor*cheb_Dn_el(dim2_n-1, ord, dim2_n-ind[der2]-1, dim2_n-ind_tmp[der2]-1);
+			}
 		}
 		return;
 	}
 	else{
-		int dim1_n = dim_nums[dm][der1]-1;
+		int dim1_n = dim_nums[dm][der1];
+		std::pair<int, bool> parity1 = check_parity(dm, der1, fn);
+		std::pair<int, bool> parity2 = check_parity(dm, der2, fn);
 		double tmp;
-		factor = coef * 4.0/(doms_end[dm][der1] - doms_start[dm][der1])/(doms_end[dm][der2] - doms_start[dm][der2]);
-		for(ind_tmp[der1] = 0; ind_tmp[der1] <= dim1_n; ind_tmp[der1]++){
-			tmp = factor * cheb_Dn_el(dim1_n, 1, dim1_n - ind[der1], dim1_n - ind_tmp[der1]);
-			for(ind_tmp[der2] = 0; ind_tmp[der2] <= dim2_n; ind_tmp[der2]++){
-				matr(row_index, index(dm, ind_tmp, fn)) += tmp * cheb_Dn_el(dim2_n, 1, dim2_n - ind[der2], dim2_n - ind_tmp[der2]);
+		factor = coef*4.0/(doms_end[dm][der1] - doms_start[dm][der1])/(doms_end[dm][der2] - doms_start[dm][der2]);
+		for(ind_tmp[der1] = 0; ind_tmp[der1] < dim1_n; ind_tmp[der1]++){
+			if(parity1.first)
+				tmp = 0.5*factor*cheb_Dn_double(parity1.first == 2, parity1.second, dim1_n, 1, ind[der1], ind_tmp[der1]);
+			else
+				tmp = factor*cheb_Dn1_el(dim1_n-1, dim1_n-ind[der1]-1, dim1_n-ind_tmp[der1]-1);
+			if(parity2.first){
+				for(ind_tmp[der2] = 0; ind_tmp[der2] < dim2_n; ind_tmp[der2]++){
+					matr(row_index, index(dm, ind_tmp, fn)) += 0.5*tmp*cheb_Dn_double(parity2.first == 2, parity2.second, dim2_n, 1, ind[der2], ind_tmp[der2]);
+				}
+			}
+			else{
+				for(ind_tmp[der2] = 0; ind_tmp[der2] < dim2_n; ind_tmp[der2]++){
+					matr(row_index, index(dm, ind_tmp, fn)) += tmp*cheb_Dn1_el(dim2_n-1, dim2_n-ind[der2]-1, dim2_n-ind_tmp[der2]-1);
+				}
 			}
 		}
 		return;
@@ -277,6 +299,49 @@ void Container::load(const std::string &folder_name){
 	for(int fn = 0; fn < nfunc; fn++)
 		in_f[fn].close();
 	delete [] in_f;
+}
+
+void Container::subtract_delta(const Collocation_Matrix &colm, double coeff){
+	if(npoints != colm.size()){
+		std::cout << npoints << "," << colm.size() << std::endl;
+		std::cout << "Error in Container delta subtraction, sizes don't match\n";
+		return;
+	}
+
+	int indx = 0;
+	std::vector<unsigned int> indv(n_dim, 0);
+	for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+		for(int ind = 0; ind < dom->size; ind++){
+			for(int i = n_dim-1, tmp = ind; i >= 0; i--){
+				if(indv[i] = (tmp % dom->dim_num(i))) break;
+				tmp /= dom->dim_num(i);
+			}
+			for(int fn = 0; fn < nfunc; fn++){
+				data[indx++] -= coeff*colm.delta(colm.index(dom->bulk_domain_number, indv, fn));
+			}
+		}
+	}
+	return;
+}
+
+void Container::copy_to_vector(const Indexer &indexer, Eigen::VectorXd &vec) const{
+	if(npoints != indexer.size()){
+		vec.resize(indexer.size());
+	}
+
+	int indx = 0;
+	std::vector<unsigned int> indv(n_dim, 0);
+	for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+		for(int ind = 0; ind < dom->size; ind++){
+			for(int i = n_dim-1, tmp = ind; i >= 0; i--){
+				if(indv[i] = (tmp % dom->dim_num(i))) break;
+				tmp /= dom->dim_num(i);
+			}
+			for(int fn = 0; fn < nfunc; fn++){
+				vec(indexer.index(dom->bulk_domain_number, indv, fn)) = data[indx++];
+			}
+		}
+	}
 }
 
 void Container::regrid(const Domain_Partitioning &part_init){

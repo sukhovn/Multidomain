@@ -1,0 +1,21 @@
+Number of dimensions: 2
+
+Partition sizes: 
+Dimension: 0, start: 0, end: 1
+Dimension: 1, start: 0, end: 1
+
+Domain: 0
+Dimension: 0, start: 0, end: 0.31, points: 25
+Dimension: 1, start: 0, end: 0.35, points: 25
+
+Domain: 1
+Dimension: 0, start: 0, end: 0.31, points 20
+Dimension: 1, start: 0.35, end: 1, points 20
+
+Domain: 2
+Dimension: 0, start: 0.31, end: 1, points 30
+Dimension: 1, start: 0, end: 0.5, points 20
+
+Domain: 3
+Dimension: 0, start: 0.31, end: 1, points 30
+Dimension: 1, start: 0.5, end: 1, points 20

@@ -55,6 +55,9 @@ double cheb_Dn2_el(int n, int i, int j);
 double cheb_Dn_el(int npoint, int ord, int i, int j);
 //Gives out an element of ord-th derivative Chebyshev differentiation matrix, explicit for ord = 1 and ord = 2, recursively for higer orders
 
+double cheb_Dn_double(bool side, bool parity, int n, int ord, int i, int j);
+//Gives out an element of ord-th derivative Chebyshev differentiation matrix for a doubled domain
+
 double cheb_Ex_el(int n, int j, double xst, double xend, double x);
 //Gives extrapolation coeffient to point x of the collocation polynomial 
 
