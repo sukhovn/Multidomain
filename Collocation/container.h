@@ -248,16 +248,6 @@ public:
 	void save(const std::string &folder_name) const;
 	void load(const std::string &folder_name);
 
-	//Interpolates solution to a new partitioning
-	void regrid(const Domain_Partitioning &part);
-
-	//Changes compactification
-	template<class Compactification>
-	void change_compactification(
-			const Domain_Partitioning &part_new,
-			const Compactification &comp_old,
-			const Compactification &comp_new);
-
 	friend class Indexer;
 	friend class Collocation_Matrix;
 	friend class Evaluator;
@@ -451,7 +441,6 @@ public:
 	}
 };
 
-
 class Evaluator: public Domain_Partitioning{
 private:
 	int nfunc;
@@ -460,41 +449,11 @@ private:
 	double *data;
 	std::vector<int> index_st;
 
-	void array_fft(void);
+	std::vector<std::vector<bool>> parity_st; //false - even, true - odd, empty - no doubling
+	std::vector<std::vector<bool>> parity_end;
 
 public:
-	Evaluator(const Container &cont):
-		Domain_Partitioning(cont), nfunc(cont.nfunc), npoints(cont.npoints), index_st(cont.index_st)
-	{
-		data = new double[npoints];
-		for(int i = 0; i < npoints; i++) data[i] = cont.data[i];
-		array_fft();
-	}
-
-	template<class Callable>
-	Evaluator(const Domain_Partitioning &cont, Callable &func):
-		Domain_Partitioning(cont), nfunc(1), npoints(0)
-	{
-		for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
-			index_st.push_back(npoints);
-			npoints += dom->size;
-		}
-		data = new double[npoints];
-
-		std::vector<unsigned int> indv(n_dim, 0);
-		int indx = 0;
-		for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
-			for(int ind = 0; ind < dom->size; ind++){
-				for(int i = n_dim-1, tmp = ind; i >= 0; i--){
-					if(indv[i] = (tmp % dom->dim_num(i))) break;
-					tmp /= dom->dim_num(i);
-				}
-				data[indx++] = func(dom->bulk_domain_number, indv);
-			}
-		}
-
-		array_fft();
-	}
+	Evaluator(const Container &cont);
 
 	Evaluator(Evaluator &&evali): Domain_Partitioning(std::move(evali)),
 		nfunc(evali.nfunc), npoints(evali.npoints), data(evali.data), index_st(evali.index_st)
@@ -508,7 +467,7 @@ public:
 
 	double operator()(const std::vector<double> &coord, int fn) const;
 
-	void test(const Container &cont){
+	double test(const Container &cont){
 		int indx = 0, i;
 		double max = 0.0, tmp;
 
@@ -517,7 +476,12 @@ public:
 			for(int ind = 0; ind < dom->size; ind++){
 				for(int dim = n_dim-1, tmpi = ind; dim >= 0; dim--){
 					i = tmpi % dom->dim_num(dim);
-					coord[dim] = ch_x(dom->domain_start(dim), dom->domain_end(dim), dom->dim_num(dim)-1, i);
+					if(!parity_st[dim].empty() && std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL)
+						coord[dim] = ch_x(2.0*dom->domain_start(dim)-dom->domain_end(dim), dom->domain_end(dim), 2*dom->dim_num(dim)-1, dom->dim_num(dim)+i);
+					else if(!parity_end[dim].empty() && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL)
+						coord[dim] = ch_x(dom->domain_start(dim), 2*dom->domain_end(dim)-dom->domain_start(dim), 2*dom->dim_num(dim)-1, i);
+					else
+						coord[dim] = ch_x(dom->domain_start(dim), dom->domain_end(dim), dom->dim_num(dim)-1, i);
 					if(i) break;
 					tmpi /= dom->dim_num(dim);
 				}
@@ -529,59 +493,10 @@ public:
 		}
 
 		std::cout << "Maximal discrepancy is " << max << std::endl;
+		return max;
 	}
 
 	friend class Container;
 };
-
-template<class Compactification>
-void Container::change_compactification(
-		const Domain_Partitioning &part_new,
-		const Compactification &comp_old,
-		const Compactification &comp_new)
-{
-	Evaluator eval_old(*this);
-	adjust_partitioning(part_new);
-	//Reinterpolating function
-
-	unsigned int itmp, itr = 0;
-	std::vector<unsigned int> ind(n_dim);
-	double *xc_new = new double[n_dim];
-	double *coord = new double[n_dim];
-	std::vector<double> xc_old(n_dim);
-
-	for(const Bulk_Domain *bulk = first_bulk_domain; bulk != NULL; bulk = bulk->next_bulk_domain()){
-		int dm = bulk->bulk_domain_number;
-
-		for(int indx = 0; indx < bulk->size; indx++){
-			for(int i = n_dim-1, tmpi = indx; i >= 0; i--){
-				itmp = tmpi % bulk->dim_num(i);
-				xc_new[i] = ch_x(bulk->domain_start(i), bulk->domain_end(i), bulk->dim_num(i)-1, itmp);
-				if(itmp) break;
-				tmpi /= bulk->dim_num(i);
-			}
-
-			bool is_inf = false;
-			for(int i = 0; i < n_dim; i++){
-				coord[i] = comp_new.xc(i, xc_new);
-				if(std::isinf(coord[i])){
-					is_inf = true;
-					break;
-				}
-				else xc_old[i] = comp_old.xc_inv(i, coord);
-			}
-
-			if(is_inf){
-				itr += nfunc;
-				continue;
-			}
-			for(int fn = 0; fn < nfunc; fn++)
-				data[itr++] = eval_old(xc_old, fn);
-		}
-	}
-
-	delete [] xc_new;
-	delete [] coord;
-}
 
 #endif

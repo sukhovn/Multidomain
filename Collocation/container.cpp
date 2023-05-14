@@ -344,70 +344,215 @@ void Container::copy_to_vector(const Indexer &indexer, Eigen::VectorXd &vec) con
 	}
 }
 
-void Container::regrid(const Domain_Partitioning &part_init){
-	if(part_init.n_dim != n_dim){
-		std::cout << "Regrid cannot change dimensions" << std::endl;
-		throw("Regrid dimension change");
-	}
-	if(partition_start() != part_init.partition_start() || partition_end() != part_init.partition_end()){
-		std::cout << "Regrid cannot change outside boundaries" << std::endl;
-		throw("Regrid boundary change");	
-	}
+// class Index_Printer{
+// 	std::vector<int> nx;
+// 	std::vector<int> index;
+// 	int hs;
 
-	if(this->compare_bulk_domains(part_init)){
-		std::cout << "No container regridding is needed" << std::endl;
-		return;
-	}
-	Domain_Partitioning part(part_init);
-	if(part.boundary_domains_present()) part.clear_boundary_domains();
-	Evaluator eval(*this);
-	
-	reallocate_partitioning(part);
+// public:
+// 	Index_Printer(const std::vector<int> &nx_): nx(nx_), hs(1), index(nx.size()){
+// 		for(int i = 0; i < nx.size(); ++i)
+// 			hs *= nx[i];
+// 	};
 
-	int tmpi, indx = 0;
-	std::vector<double> coord(n_dim);
-	for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
-		for(int ind = 0; ind < dom->size; ind++){
-			for(int i = n_dim-1, tmp = ind; i >= 0; i--){
-				tmpi = tmp % dom->dim_num(i);
-				coord[i] = ch_x(dom->domain_start(i), dom->domain_end(i), dom->dim_num(i)-1, tmpi);
-				if(tmpi) break;
-				tmp /= dom->dim_num(i);
-			}
-			for(int fn = 0; fn < nfunc; fn++)
-				data[indx++] = eval(coord, fn);
-		}
-	}
-}
+// 	Index_Printer &operator()(unsigned int indx){
+// 		if(indx >= hs){
+// 			std::cout << "Index out of range " << indx << " of " << hs << std::endl;
+// 			throw("Index out of range");
+// 		}
+// 		int tmp = hs;
+// 		for(int i = 0; i < nx.size(); ++i){
+// 			tmp /= nx[i];
+// 			index[i] = indx/tmp;
+// 			indx -= tmp*index[i];
+// 		}
 
-void Evaluator::array_fft(void){
-	double *ptr;
-	
+// 		return *this;
+// 	}
+
+// 	friend std::ostream &operator<<(std::ostream &os, const Index_Printer &ipr);
+// };
+
+// std::ostream &operator<<(std::ostream &os, const Index_Printer &ipr){
+// 	for(int i = 0; i < ipr.index.size(); ++i){
+// 		if(i) os << ',';
+// 		os << ipr.index[i];
+// 	}
+// 	return os;
+// }
+
+Evaluator::Evaluator(const Container &cont):
+	Domain_Partitioning(cont), nfunc(cont.nfunc), npoints(cont.npoints), index_st(cont.index_st), data(new double[cont.npoints]),
+	parity_st(cont.parity_st), parity_end(cont.parity_end)
+{
+	int ndom = 0;
 	double fft_coef;
 	fftw_plan planCOS;
-	int *n_array = new int[n_dim];
 	fftw_r2r_kind *kind = new fftw_r2r_kind[n_dim];
 	for(int dim = 0; dim < n_dim; dim++) kind[dim] = FFTW_REDFT00;
 
 	for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
-		ptr = data + index_st[dom->bulk_domain_number];
-		
-		fft_coef = 1.0;
-		for(int dim = 0; dim < n_dim; dim++){
-			fft_coef *= dom->dim_num(dim)-1;
-			n_array[dim] = dom->dim_num(dim);
+		std::vector<int> nx_run(dom->dim_num());
+		std::vector<bool> doubling_side(n_dim, false);
+		std::vector<int> func_signs(nfunc, 1.0); //Signs for flipping according to parity
+
+		for(int dim = 0; dim < n_dim; ++dim){
+			if(!parity_st[dim].empty() && std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL){
+				for(int fn = 0; fn < nfunc; ++fn)
+					if(parity_st[dim][fn]) func_signs[fn] *= -1.0;
+				doubling_side[dim] = true;
+				nx_run[dim] *= 2;
+			}
+			else if(!parity_end[dim].empty() && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL)
+				nx_run[dim] *= 2;
 		}
-		planCOS = fftw_plan_many_r2r(n_dim, n_array, nfunc, ptr, n_array, nfunc, 1, ptr, n_array, nfunc, 1, kind, FFTW_ESTIMATE);
+		double *arr_tmp = new double[nfunc*std::accumulate(nx_run.begin(), nx_run.end(), 1, std::multiplies<double>())];
+		double fft_coef = std::accumulate(nx_run.begin(), nx_run.end(), 1, [](int a, int b){return a*(b-1);});
 
-		for(int i = 0; i < nfunc*dom->size; i++) ptr[i] /= fft_coef;
+		//Filling array for FFT
+		std::vector<int> indx(n_dim, 0);
+		int ind1 = 0, ind2 = cont.index_st[ndom];
+		for(int dim = n_dim-1, tmp = nfunc; dim >=0; --dim){
+			if(doubling_side[dim]) ind2 += (dom->dim_num(dim)-1)*tmp;
+			tmp *= dom->dim_num(dim);
+		}
+		while(1){
+			for(int fn = 0; fn < nfunc; ++fn){
+				arr_tmp[ind1++] = func_signs[fn]*cont.data[ind2+fn]/fft_coef;
+			}
 
-		fftw_execute_r2r(planCOS, ptr, ptr);
+			//Indexing part that makes ind1 and ind2 correctly run through the doubled and undoubled array
+			int dim, tmp = nfunc;
+			for(dim = n_dim-1; dim >= 0; --dim){
+				++indx[dim];
+				if(indx[dim] < nx_run[dim]){
+					if(indx[dim] < dom->dim_num(dim)){
+						if(doubling_side[dim])
+							ind2 -= tmp;
+						else
+							ind2 += tmp;
+					}
+					else if(indx[dim] > dom->dim_num(dim)){
+						if(doubling_side[dim])
+							ind2 += tmp;
+						else
+							ind2 -= tmp;
+					}
+					else{//Flipping signs for odd functions
+						for(int fn = 0; fn < nfunc; ++fn){
+							if((!parity_st[dim].empty() && parity_st[dim][fn]) || (!parity_end[dim].empty() && parity_end[dim][fn]))
+								func_signs[fn] *= -1.0;
+						}
+					}
+					break;
+				}
+				if(nx_run[dim] == dom->dim_num(dim)){
+					ind2 -= (dom->dim_num(dim)-1)*tmp;
+				}
+				else{//Flipping signs for odd functions
+					for(int fn = 0; fn < nfunc; ++fn){
+						if((!parity_st[dim].empty() && parity_st[dim][fn]) || (!parity_end[dim].empty() && parity_end[dim][fn]))
+							func_signs[fn] *= -1.0;
+					}
+				}
+				indx[dim] = 0;
+				tmp *= dom->dim_num(dim);
+			}
+			if(dim < 0) break;
+		}
 
+		//FFT of the resulting array
+		planCOS = fftw_plan_many_r2r(n_dim, nx_run.data(), nfunc, arr_tmp, nx_run.data(), nfunc, 1, arr_tmp, nx_run.data(), nfunc, 1, kind, FFTW_ESTIMATE);
+		fftw_execute_r2r(planCOS, arr_tmp, arr_tmp);
 		fftw_destroy_plan(planCOS);
+
+		//Transforming odd parity representations to even parity ones for f(x)/x
+		for(int dim = n_dim-1; dim >= 0; --dim){
+			if(dom->dim_num(dim) == nx_run[dim]) continue;
+			std::fill(indx.begin(), indx.end(), 0);
+			int tmp2 = nfunc;
+			for(int dim2 = dim+1; dim2 < n_dim; ++dim2)
+				tmp2 *= nx_run[dim2];
+			std::vector<int> ind(nfunc, 0);
+			for(int dim2 = 0; dim2 < dim; ++dim2){
+				if(nx_run[dim2] == dom->dim_num(dim2))
+					for(int fn = 0; fn < nfunc; ++fn) ind[fn] = ind[fn]*nx_run[dim2];
+				else
+					for(int fn = 0; fn < nfunc; ++fn){
+						if((!parity_st[dim2].empty() && parity_st[dim2][fn]) || (!parity_end[dim2].empty() && parity_end[dim2][fn]))
+							ind[fn] = ind[fn]*nx_run[dim2]+1;
+						else
+							ind[fn] = ind[fn]*nx_run[dim2];
+					}
+			}
+			for(int fn = 0; fn < nfunc; ++fn) ind[fn] *= tmp2*nx_run[dim];
+
+			while(1){
+				for(int fn = 0; fn < nfunc; ++fn){
+					if((!parity_st[dim].empty() && parity_st[dim][fn]) || (!parity_end[dim].empty() && parity_end[dim][fn])){
+						arr_tmp[ind[fn]+(nx_run[dim]-2)*tmp2+fn] = 2.0*arr_tmp[ind[fn]+(nx_run[dim]-1)*tmp2+fn];
+					}
+				}
+				for(int i = dom->dim_num(dim)-2; i >= 0; --i){
+					for(int fn = 0; fn < nfunc; ++fn){
+						if((!parity_st[dim].empty() && parity_st[dim][fn]) || (!parity_end[dim].empty() && parity_end[dim][fn])){
+							arr_tmp[ind[fn]+2*i*tmp2+fn] = 2.0*arr_tmp[ind[fn]+(2*i+1)*tmp2+fn]-arr_tmp[ind[fn]+(2*i+2)*tmp2+fn];
+						}
+					}
+				}
+
+				int dim2, tmp = nfunc;
+				for(dim2 = n_dim-1; dim2 >= 0; --dim2){
+					if(dim2 == dim){
+						tmp *= nx_run[dim2];
+						continue;
+					}
+					++indx[dim2];
+					if(nx_run[dim2] == dom->dim_num(dim2)){
+						for(int fn = 0; fn < nfunc; ++fn)
+							ind[fn] += tmp;
+					}
+					else{
+						for(int fn = 0; fn < nfunc; ++fn)
+							ind[fn] += 2*tmp;
+					}
+					if(indx[dim2] < dom->dim_num(dim2)){
+						break;
+					}
+					indx[dim2] = 0;
+					tmp *= nx_run[dim2];
+					for(int fn = 0; fn < nfunc; ++fn)
+						ind[fn] -= tmp;
+				}
+				if(dim2 < 0) break;
+			}
+		}
+
+		ind1 = index_st[ndom]; ind2 = 0;
+		std::fill(indx.begin(), indx.end(), 0);
+		while(1){
+			for(int fn = 0; fn < nfunc; ++fn)
+				data[ind1++] = arr_tmp[ind2++];
+
+			int dim, tmp = nfunc;
+			for(dim = n_dim-1; dim >= 0; --dim){
+				++indx[dim];
+				if(nx_run[dim] != dom->dim_num(dim)) ind2 += tmp;
+				if(indx[dim] < dom->dim_num(dim)){
+					break;
+				}
+				indx[dim] = 0;
+				tmp *= nx_run[dim];
+			}
+			if(dim < 0) break;
+		}
+
+		delete [] arr_tmp;
+
+		++ndom;
 	}
 
 	delete [] kind;
-	delete [] n_array;
 }
 
 double Evaluator::operator()(const std::vector<double> &coord, int fn) const{
@@ -415,9 +560,19 @@ double Evaluator::operator()(const std::vector<double> &coord, int fn) const{
 	int indx = index_st[dom->bulk_domain_number] + (dom->size - 1)*nfunc + fn;
 
 	double sv, reslt;
-	std::vector<double> y2(n_dim), d(n_dim, 0.0), dd(n_dim, 0.0);
-	for(int dim = 0; dim < n_dim; dim++) y2[dim] = 2.0 * (dom->domain_start(dim) + dom->domain_end(dim) - 2.0 * coord[dim])
-													/ (dom->domain_end(dim) - dom->domain_start(dim));
+	std::vector<double> y2(n_dim), d(n_dim, 0.0), dd(n_dim, 0.0), xorig(n_dim, 0.0);
+	for(int dim = 0; dim < n_dim; dim++){
+		if(!parity_st[dim].empty() && std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL){
+			xorig[dim] = (dom->domain_start(dim) - coord[dim])/(dom->domain_end(dim) - dom->domain_start(dim));
+			y2[dim] = 4.0*xorig[dim]*xorig[dim] - 2.0;
+		}
+		else if(!parity_end[dim].empty() && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL){
+			xorig[dim] = (dom->domain_end(dim) - coord[dim])/(dom->domain_end(dim) - dom->domain_start(dim));
+			y2[dim] = 4.0*xorig[dim]*xorig[dim] - 2.0;
+		}
+		else
+			y2[dim] = 2.0*(dom->domain_start(dim) + dom->domain_end(dim) - 2.0 * coord[dim])/(dom->domain_end(dim) - dom->domain_start(dim));
+	}
 
 	for(int ind = dom->size-1; ind >= 0; ind--){
 		if(ind % dom->dim_num(n_dim-1)){
@@ -445,6 +600,13 @@ double Evaluator::operator()(const std::vector<double> &coord, int fn) const{
 			}
 		}
 		indx -= nfunc;
+	}
+
+	for(int dim = 0; dim < n_dim; ++dim){
+		if((!parity_st[dim].empty() && std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL && parity_st[dim][fn]) ||
+			(!parity_end[dim].empty() && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL && parity_end[dim][fn])){
+				reslt *= xorig[dim];
+			}
 	}
 
 	return reslt; 

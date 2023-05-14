@@ -135,6 +135,95 @@ struct Differentiation_Matrix_Test{
 	}
 };
 
+void collocation_doubling_test(int ndim){
+	// On each dimension 5 possible combinations:
+	// 0 - no doubling
+	// 1 - even doubling from the left
+	// 2 - odd doubling from the left
+	// 3 - even doubling from the right
+	// 4 - odd doubling from the right
+	struct Doubling_Check{
+		std::vector<int> doubling_condition;
+		Doubling_Check(const std::vector<int> &condition): doubling_condition(condition) {};
+
+		double operator()(int fn, double *x) const{
+			double res = 1.0;
+			for(int dim = 0; dim < doubling_condition.size(); ++dim){
+				switch(doubling_condition[dim]){
+					case 0:
+						res *= std::exp(x[dim]);
+						break;
+					case 1:
+						res *= x[dim]*std::sin(M_PI*x[dim]);
+						break;
+					case 2:
+						res *= x[dim]*std::cos(M_PI*x[dim]);
+						break;
+					case 3:
+						res *= (1.0-x[dim])*std::sin(M_PI*x[dim]);
+						break;
+					case 4:
+						res *= (1.0-x[dim])*std::cos(M_PI*x[dim]);
+						break;
+				}
+			}
+			return res;
+		}
+	};
+
+	std::cout << "Running comprehensive domain doubling check" << std::endl;
+	std::vector<double> start(ndim, 0.0), lengths(ndim, 1.0);
+	std::vector<int> sizes(ndim, 20), condition(ndim, 0), max_discrepancy;
+	double tmp, max = 0.0;
+	while(1){
+		std::cout << "Testing condition ";
+		for(int el : condition)
+			std::cout << el;
+		std::cout << std::endl;
+		Domain_Partitioning part_test(start, lengths, sizes);
+		Container tcont(1, part_test);
+		for(int dim = 0; dim < condition.size(); ++dim){
+			switch(condition[dim]){
+				case 1:
+					tcont.set_doubling_begin(dim, {false});
+					break;
+				case 2:
+					tcont.set_doubling_begin(dim, {true});
+					break;
+				case 3:
+					tcont.set_doubling_end(dim, {false});
+					break;
+				case 4:
+					tcont.set_doubling_end(dim, {true});
+					break;
+			}
+		}
+		Doubling_Check check_function(condition);
+		tcont.fill_function(check_function);
+		Evaluator eval(tcont);
+		tmp = eval.test(tcont);
+		if(tmp > max){
+			max = tmp;
+			max_discrepancy = condition;
+		}
+		std::cout << std::endl;
+
+		int dim;
+		for(dim = condition.size()-1; dim >= 0; --dim){
+			++condition[dim];
+			if(condition[dim] < 5) break;
+			condition[dim] = 0;
+		}
+		if(dim < 0)
+			break;
+	}
+
+	std::cout << "Maximum discrepancy " << max << " found for configuration ";
+	for(int el : max_discrepancy)
+		std::cout << el;
+	std::cout << std::endl;
+}
+
 void collocation_2D_container_test(const std::string &test_folder, int argc, char const *argv[]){
 	Domain_Partitioning part_sin("Tests/diff_domains_2D.dat");
 	// Domain_Partitioning part_sin("Tests/domains_2D_test.dat");
@@ -160,37 +249,14 @@ void collocation_2D_container_test(const std::string &test_folder, int argc, cha
 	tcont.set_doubling_begin(0, {false, false});
 	tcont.set_doubling_begin(1, {false, false});
 	dmat_test.check_differentiation(gauss_profile, test_folder + "/diff_test_gauss");
+	std::cout << std::endl;
 
-	// std::cout << "Partitioning\n" << std::endl;
-	// print_partitioning(tcont);
+	// collocation_doubling_test(2);
+	// std::cout << std::endl;
+	// collocation_doubling_test(3);
 
-	// tcont.fill_function([](int fn, double *x){return (fn ? x[0] : x[1]);});
-
-	// tcont.fill_function(sin_func);
-
-	// Evaluator eval(tcont);
-	// eval.test(tcont);
-
-	// Domain_Partitioning part_new("Tests/domains_2D_test.dat");
-	// part_new.print_domain_2D(test_folder + "/domains_2D_test.pbm");
-
-	// tcont.regrid(part_new);
-	// std::cout << "The difference is: " << tcont.compare_function(sin_func) << std::endl;
-	// tcont.save(test_folder + "/cont_test_regrid");
-
-	// part_new.domain_split({0.6, 0.6}, 0);
-	// part_new.print_domain_2D(test_folder + "/domains_2D_test_split.pbm");
-
-	// tcont.regrid(part_new);
-	// std::cout << "The difference is: " << tcont.compare_function(sin_func) << std::endl;
-	// tcont.save(test_folder + "/cont_test_regrid_2");
-
-	// part_new.move_domain_wall({0.8, 0.5}, 0.7);
-	// part_new.print_domain_2D(test_folder + "/domains_2D_test_split_move.pbm");
-
-	// tcont.regrid(part_new);
-	// std::cout << "The difference is: " << tcont.compare_function(sin_func) << std::endl;
-	// tcont.save(test_folder + "/cont_test_regrid_3");
+	Evaluator eval(tcont);
+	eval.test(tcont);
 
 	return;
 }
