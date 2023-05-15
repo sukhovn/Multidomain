@@ -224,6 +224,46 @@ void collocation_doubling_test(int ndim){
 	std::cout << std::endl;
 }
 
+template<class Callable>
+void point_class_test(Container &cont, const Callable &func){
+	cont.fill_function(func);
+
+	Point pnt(&cont);
+
+	double tmp;
+	std::vector<double> max(4, 0.0);
+
+	for(const Bulk_Domain *dom = cont.partition.first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+		std::vector<unsigned int> ind(cont.partition.n_dim, 0);
+		for(int indx = 0; indx < dom->size; indx++){
+			for(int i = cont.partition.n_dim-1, tmpi = indx; i >= 0; i--){
+				if((ind[i] = tmpi % dom->dim_num(i)) > 1) break;
+				tmpi /= dom->dim_num(i);
+			}
+
+			pnt.get_point(dom->bulk_domain_number, ind, true);
+
+			// std::cout << pnt.x[0] << ',' << pnt.x[1] << std::endl;
+
+			for(int fn = 0; fn < cont.number_of_functions(); ++fn){
+				tmp = std::fabs(func(fn, pnt.x) - pnt.phi[fn]);
+				if(tmp > max[0]) max[0] = tmp;
+				tmp = std::fabs(func.d_x(fn, pnt.x) - pnt.dphi[0][fn]);
+				if(tmp > max[1]) max[1] = tmp;
+				tmp = std::fabs(func.d_y(fn, pnt.x) - pnt.dphi[1][fn]);
+				if(tmp > max[2]) max[2] = tmp;
+				tmp = std::fabs(func.d_xy(fn, pnt.x) - pnt.ddphi[2][fn]);
+				if(tmp > max[3]) max[3] = tmp;
+			}
+		}
+	}
+
+	std::cout << "Maximal function deviation: " << max[0] << std::endl;
+	std::cout << "Maximal x derivative deviation: " << max[1] << std::endl;
+	std::cout << "Maximal y derivative deviation: " << max[2] << std::endl;
+	std::cout << "Maximal xy derivative deviation: " << max[3] << std::endl;
+}
+
 void collocation_2D_container_test(const std::string &test_folder, int argc, char const *argv[]){
 	Domain_Partitioning part_sin("Tests/diff_domains_2D.dat");
 	// Domain_Partitioning part_sin("Tests/domains_2D_test.dat");
@@ -251,12 +291,28 @@ void collocation_2D_container_test(const std::string &test_folder, int argc, cha
 	dmat_test.check_differentiation(gauss_profile, test_folder + "/diff_test_gauss");
 	std::cout << std::endl;
 
+	std::cout << "Evaluator test" << std::endl;
 	// collocation_doubling_test(2);
 	// std::cout << std::endl;
 	// collocation_doubling_test(3);
 
 	Evaluator eval(tcont);
 	eval.test(tcont);
+	std::cout << std::endl;
+
+	std::cout << "Testing point class on Gaussian profile" << std::endl;
+	point_class_test(tcont, gauss_profile);
+	std::cout << std::endl;
+
+	std::cout << "Testing point class on sin function" << std::endl;
+	Domain_Partitioning part_point("Tests/domains_2D_test.dat");
+	tcont.adjust_partitioning(part_point);
+	tcont.reset_doubling();
+	tcont.set_doubling_begin(0, {true, false});
+	tcont.set_doubling_begin(1, {true, false});
+	tcont.set_doubling_end(0, {true, false});
+	tcont.set_doubling_end(1, {true, false});
+	point_class_test(tcont, sin_func);
 
 	return;
 }

@@ -251,8 +251,9 @@ public:
 	friend class Indexer;
 	friend class Collocation_Matrix;
 	friend class Evaluator;
-	template<class>
 	friend class Point;
+	template<class>
+	friend class Point_Compactified;
 	template<class>
 	friend class Collocation_Solution;
 	template<class, class>
