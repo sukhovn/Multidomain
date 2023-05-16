@@ -229,7 +229,7 @@ void Domain_Partitioning::verify_ordering(bool verbose){
 	if(verbose) std::cout << std::endl;
 }
 
-void Domain_Partitioning::verify_boundary_point_splitting(){
+void Domain_Partitioning::verify_boundary_point_splitting(const std::unordered_set<int> &exclude_left, const std::unordered_set<int> &exclude_right){
 	if(!boundary_domains_inserted){
 		std::cout << "Warning! Trying to verify boundary point splitting for a partition with no boundaries" << std::endl;
 		return;
@@ -241,14 +241,15 @@ void Domain_Partitioning::verify_boundary_point_splitting(){
 		for(int dm = 0; dm < ndim; dm++){
 			for(int i = 0, indx = 0; i < ndim; i++){
 				if(i == dm) continue;
-				if(i < dm){
+
+				if(i < dm && !(exclude_left.count(i) && std::fabs(part_start[i] - bulk->dom_start[i]) < COMP_TOL))
 					area_begin[indx] = 1;
-					area_end[indx++] = bulk->dim_n[i]-1;
-				}
-				else{
+				else
 					area_begin[indx] = 0;
+				if(i < dm && !(exclude_right.count(i) && std::fabs(part_end[i] - bulk->dom_end[i]) < COMP_TOL))
+					area_end[indx++] = bulk->dim_n[i]-1;
+				else
 					area_end[indx++] = bulk->dim_n[i];
-				}
 			}
 
 			std::vector<std::vector<int>> begins_left;
@@ -279,14 +280,46 @@ void Domain_Partitioning::verify_boundary_point_splitting(){
 			try{
 				check_consistency<int>(begins_left, ends_left, area_begin, area_end);
 			}
-			catch(char const *err){
+			catch(const char *err){
+				std::cout << "Begins left:" << std::endl;
+				for(auto el : begins_left){
+					for(int i = 0; i < el.size(); ++i){
+						if(i) std::cout << ',';
+						std::cout << el[i];
+					}
+					std::cout << std::endl;
+				}
+				std::cout << "Ends left:" << std::endl;
+				for(auto el : ends_left){
+					for(int i = 0; i < el.size(); ++i){
+						if(i) std::cout << ',';
+						std::cout << el[i];
+					}
+					std::cout << std::endl;
+				}
 				std::cout << "Problem detected while verifying left boundary along dimension " << dm << " of the domain " << bulk->bulk_domain_number << std::endl;
 				throw(err);
 			}
 			try{
 				check_consistency<int>(begins_right, ends_right, area_begin, area_end);
 			}
-			catch(char const *err){
+			catch(const char *err){
+				std::cout << "Begins right:" << std::endl;
+				for(auto el : begins_right){
+					for(int i = 0; i < el.size(); ++i){
+						if(i) std::cout << ',';
+						std::cout << el[i];
+					}
+					std::cout << std::endl;
+				}
+				std::cout << "Ends right:" << std::endl;
+				for(auto el : ends_right){
+					for(int i = 0; i < el.size(); ++i){
+						if(i) std::cout << ',';
+						std::cout << el[i];
+					}
+					std::cout << std::endl;
+				}
 				std::cout << "Problem detected while verifying right boundary along dimension " << dm << " of the domain " << bulk->bulk_domain_number << std::endl;
 				throw(err);
 			}

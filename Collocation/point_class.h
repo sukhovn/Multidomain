@@ -264,6 +264,9 @@ public:
 		get_point_fields_only(dm, indi);
 		get_derivatives(compute_mixed_derivatives);
 	}
+
+	template<class>
+	friend class Point_Compactified;
 };
 
 template<class Compactification>

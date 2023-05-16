@@ -64,38 +64,6 @@ struct{
 	}
 } gauss_profile;
 
-class Trig_Func{
-	std::vector<unsigned int> node_x;
-	std::vector<unsigned int> node_y;
-	int ord_x;
-	int ord_y;
-	double sign;
-public:
-	Trig_Func(std::vector<unsigned int> node_xi, std::vector<unsigned int> node_yi): 
-		node_x(node_xi), node_y(node_yi), ord_x(0), ord_y(0), sign(1.0)
-	{
-		if(ord_x%4 > 1) sign *= -1.0;
-		if(ord_y%4 > 1) sign *= -1.0;
-	}
-	Trig_Func(const Trig_Func &trg, int ord_x_i, int ord_y_i): 
-		node_x(trg.node_x), node_y(trg.node_y), ord_x(trg.ord_x+ord_x_i), ord_y(trg.ord_y+ord_y_i), sign(1.0)
-	{
-		if(ord_x%4 > 1) sign *= -1.0;
-		if(ord_y%4 > 1) sign *= -1.0;
-	}
-
-	double operator()(int fn, double *x){
-		double nx = node_x[fn];
-		double ny = node_y[fn];
-		double tmp = sign*std::pow(nx*M_PI, ord_x)*std::pow(ny*M_PI, ord_y);
-		if(ord_x%2) tmp *= std::cos(nx*M_PI*x[0]);
-		else tmp *= std::sin(nx*M_PI*x[0]);
-		if(ord_y%2) tmp *= std::cos(ny*M_PI*x[1]);
-		else tmp *= std::sin(ny*M_PI*x[1]);
-		return tmp;
-	}
-};
-
 struct Differentiation_Matrix_Test{
 	Container &cont;
 
@@ -243,8 +211,6 @@ void point_class_test(Container &cont, const Callable &func){
 
 			pnt.get_point(dom->bulk_domain_number, ind, true);
 
-			// std::cout << pnt.x[0] << ',' << pnt.x[1] << std::endl;
-
 			for(int fn = 0; fn < cont.number_of_functions(); ++fn){
 				tmp = std::fabs(func(fn, pnt.x) - pnt.phi[fn]);
 				if(tmp > max[0]) max[0] = tmp;
@@ -292,10 +258,9 @@ void collocation_2D_container_test(const std::string &test_folder, int argc, cha
 	std::cout << std::endl;
 
 	std::cout << "Evaluator test" << std::endl;
-	// collocation_doubling_test(2);
-	// std::cout << std::endl;
-	// collocation_doubling_test(3);
+	collocation_doubling_test(2);
 
+	std::cout << "\nRunning evaluator test on gaussian profile function" << std::endl;
 	Evaluator eval(tcont);
 	eval.test(tcont);
 	std::cout << std::endl;
@@ -315,4 +280,208 @@ void collocation_2D_container_test(const std::string &test_folder, int argc, cha
 	point_class_test(tcont, sin_func);
 
 	return;
+}
+
+double vector_max(const std::vector<double> &vec){
+	double max = vec[0];
+	for(int i = 1; i < vec.size(); ++i)
+		if(vec[i] > max) max = vec[i];
+	return max;
+}
+
+void collocation_2D_collocation_fill_test(const std::string &test_folder, int argc, char const *argv[]){
+	// Domain_Partitioning bpart("Tests/simple_domains_2D.dat");
+	Domain_Partitioning bpart("Tests/domains_2D_test.dat");
+
+	Container cont(2, bpart);
+	cont.set_doubling_begin(0, {true, false});
+	cont.set_doubling_begin(1, {true, false});
+	cont.set_doubling_end(0, {true, false});
+	cont.set_doubling_end(1, {true, false});
+
+	No_Compactification no_compact;
+	Test_Equations test_eqn;
+	Collocation_Solver_Full<No_Compactification, Test_Equations> solver(no_compact, &test_eqn, &cont);
+
+	std::cout << "Filling collocation matrix" << std::endl;
+	solver.collocation_fill<true, true>();
+	std::cout << "Filled" << std::endl;
+	std::cout << "Number of points: " << cont.size() << std::endl;
+
+	std::cout << "Computing delta vector" << std::endl;
+	solver.colm.compute_delta();
+	cont.subtract_delta(solver.colm);
+	std::cout << "Solver step taken" << std::endl;
+
+	solver.collocation_fill<true, true>();
+	solver.colm.compute_delta();
+	cont.subtract_delta(solver.colm);
+
+	cont.save(test_folder + "/colloc_simple");
+
+	std::cout << "The difference is: " << vector_max(solver.find_function_maximum(&Test_Equations::solution_check, 2)) << std::endl;
+
+	// std::cout << "The integral is: " << solver.integrate_function(pure_field_square) << std::endl;
+	// std::cout << "The true integral value is: 0.25" << std::endl;
+
+	// solver.fill_seed(sin_func);
+	// Evaluator eval = solver.get_function_evaluator([](double *x, double *phi, double **dphi, double **ddphi){return -phi[0];});
+
+	// Container cont_test(1, bpart);
+	// cont_test.fill_function([](int fi, double *x){return -sin_func(fi, x);});
+	// eval.test(cont_test);
+
+	// Collocation_Nelder_Mead minimizer(eval);
+	// minimizer.safe_minimization();
+	// std::cout << "Maximal function value: " << -minimizer.min_val << std::endl;
+	// std::cout << "Maximal value occured at: (" << minimizer.min_x[0] << ", " << minimizer.min_x[1] << ")" << std::endl;
+
+	// int n_test = 30;
+	// Evaluator_1D_Spec eval1d(n_test);
+
+	// std::cout << "Incomplete integral test along dimension 0" << std::endl;
+	// fill_integral<No_Compactification>(
+	// 	eval1d,
+	// 	solver,
+	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0];},
+	// 	0
+	// );
+
+	// eval1d.compare_test([](double x){return 2.0/M_PI/M_PI*(1.0 - std::cos(M_PI*x));});
+
+	// std::cout << "Incomplete integral test along dimension 1" << std::endl;
+	// fill_integral<No_Compactification>(
+	// 	eval1d,
+	// 	solver,
+	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0];},
+	// 	1
+	// );
+
+	// eval1d.compare_test([](double x){return 2.0/M_PI/M_PI*(1.0 - std::cos(M_PI*x));});
+}
+
+
+#include <test_equations_3D.h>
+
+double sin_func_3D(int fi, double *x){
+	if(fi == 0)
+		return std::sin(M_PI*x[0])*std::sin(M_PI*x[1])*std::sin(M_PI*x[2]);
+	else
+		throw("Wrong function number");
+}
+
+void collocation_3D_container_test(const std::string &test_folder, int argc, char const *argv[]){
+	Domain_Partitioning bpart("Tests/simple_domains_3D.dat");
+
+	Container cont(1, bpart);
+
+	cont.partition.print_domain_3D(test_folder + "/domains_3D_test");
+	// std::cout << "Partitioning\n" << std::endl;
+	// print_partitioning(cont);
+
+	cont.fill_function(sin_func_3D);
+	cont.save(test_folder + "/cont_test_3D");
+
+	std::cout << "Number of points: " << cont.size() << std::endl;
+	std::cout << "Check value, should be zero: " << cont.compare_function(sin_func_3D) << std::endl;
+
+	std::cout << "Evaluator test" << std::endl;
+	collocation_doubling_test(3);
+	std::cout << std::endl;
+
+	Evaluator eval(cont);
+	eval.test(cont);
+
+	// bpart.domain_split({0.2, 0.2, 0.2}, 0);
+
+	// cont.regrid(bpart);
+	// std::cout << "The difference is: " << cont.compare_function(sin_func_3D) << std::endl;
+
+	return;
+}
+
+void collocation_3D_collocation_fill_test(const std::string &test_folder, int argc, char const *argv[]){
+	// Domain_Partitioning bpart({0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}, {10, 10, 10});
+	Domain_Partitioning bpart("Tests/simple_domains_3D.dat");
+	bpart.save_domains(test_folder + "/domains.dat");
+
+	Container cont(1, bpart);
+	cont.set_doubling_begin(0, {false});
+	cont.set_doubling_begin(1, {true});
+	cont.set_doubling_begin(2, {false});
+	cont.set_doubling_end(0, {false});
+	// cont.set_doubling_end(1, {true});
+	// cont.set_doubling_end(2, {false});
+
+	No_Compactification no_compact;
+	Test_Equations_3D test_eqn;
+	Collocation_Solver_Full<No_Compactification, Test_Equations_3D> solver(no_compact, &test_eqn, &cont);
+
+	std::cout << "Filling collocation matrix" << std::endl;
+	solver.collocation_fill<true, true>();
+	std::cout << "Filled" << std::endl;
+	std::cout << "Number of points: " << cont.size() << std::endl;
+
+	std::cout << "Computing delta vector" << std::endl;
+	solver.colm.compute_delta();
+	cont.subtract_delta(solver.colm);
+	std::cout << "Solver step taken" << std::endl;
+
+	solver.collocation_fill<true, true>();
+	solver.colm.compute_delta();
+	cont.subtract_delta(solver.colm);
+
+	cont.save(test_folder + "/cont_test_3D");
+
+	std::cout << "The difference is: " << vector_max(solver.find_function_maximum(&Test_Equations_3D::solution_check)) << std::endl;
+	// std::cout << "The integral is: " << solver.integrate_function(pure_field_square) << std::endl;
+	// std::cout << "The true integral value is: 0.125" << std::endl;
+
+	// // solver.fill_seed([](int fn, double *x){
+	// // 	return std::cos(M_PI*x[0])*std::sin(M_PI*x[1])*std::cos(M_PI*x[2]);
+	// // });
+
+	// Evaluator eval = solver.get_function_evaluator([](double *x, double *phi, double **dphi, double **ddphi){return -phi[0];});
+	// Collocation_Nelder_Mead minimizer(eval);
+	// minimizer.safe_minimization();
+	// std::cout << "Maximal function value: " << -minimizer.min_val << std::endl;
+	// std::cout << "Maximal value occured at: (" << minimizer.min_x[0] << ", " << minimizer.min_x[1] << ", " << minimizer.min_x[2] << ")" << std::endl;
+
+	// int int_dim;
+	// int n_test = 30;
+
+	// Evaluator_1D_Spec eval1d(n_test);
+
+	// //Dimension 0
+	// fill_integral<No_Compactification>(
+	// 	eval1d,
+	// 	solver,
+	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];},
+	// 	0
+	// );
+
+	// std::cout << "Incomplete integral test along dimension 0" << std::endl;
+	// eval1d.compare_test([](double x){return 0.125*(x + std::sin(2.0*M_PI*x)/(2.0*M_PI));});
+
+	// //Dimension 1
+	// fill_integral<No_Compactification>(
+	// 	eval1d,
+	// 	solver,
+	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];},
+	// 	1
+	// );
+
+	// std::cout << "Incomplete integral test along dimension 1" << std::endl;
+	// eval1d.compare_test([](double x){return 0.125*(x - std::sin(2.0*M_PI*x)/(2.0*M_PI));});
+
+	// //Dimension 2
+	// fill_integral<No_Compactification>(
+	// 	eval1d,
+	// 	solver,
+	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];},
+	// 	2
+	// );
+
+	// std::cout << "Incomplete integral test along dimension 2" << std::endl;
+	// eval1d.compare_test([](double x){return 0.125*(x + std::sin(2.0*M_PI*x)/(2.0*M_PI));});
 }

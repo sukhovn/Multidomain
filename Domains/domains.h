@@ -358,10 +358,12 @@ public:
 template<class T>
 void check_consistency(const std::vector<std::vector<T>> &begins, const std::vector<std::vector<T>> &ends, 
 						const std::vector<T> &area_begin, const std::vector<T> &area_end){
-	if(begins.size() != ends.size() || begins.size() == 0){
+	if(begins.size() != ends.size()){
 		std::cout << "Wrong input data" << std::endl;
 		throw("Wrong input data");
 	}
+	if(begins.size() == 0)
+		return;
 	int ndomains = begins.size();
 	int ndim = begins[0].size();
 	for(int i = 0; i < ndomains; i++){

@@ -89,7 +89,7 @@ void test_2D_boundary_partitioning(const std::string &test_folder, int argc, cha
 
 	bpart2.clear_boundary_domains();
 	bpart2.insert_boundary_domains();
-	bpart2.fill_boundary_point_range(ch_x_inv_low);
+	bpart2.fill_boundary_point_range([](int dim, double xst, double xend, int n, double x){return ch_x_inv_low(xst, xend, n-1, x);});
 	std::cout << "Copy test" << std::endl;
 	Domain_Partitioning bpart_copy(bpart2);
 	if(bpart_copy.compare_bulk_domains(bpart2)) std::cout << "Incomplete copy test pass" << std::endl;

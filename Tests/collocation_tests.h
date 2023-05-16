@@ -1,7 +1,8 @@
+#include <test_equations.h>
 #include <domains.h>
 #include <boundaries.h>
 #include <container.h>
-#include <point_class.h>
+#include <collocation_solver_full.h>
 
 #ifndef COLLOCATION_2D_TEST_H
 #define COLLOCATION_2D_TEST_H

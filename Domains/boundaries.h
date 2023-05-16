@@ -15,14 +15,6 @@ private:
 
 	//For testing purposes;
 	int b_dom_number;
-	// Prints domain starting and ending coordinates along every dimension
-	void print_domain(std::ostream& os) const{
-		for(int dm = 0; dm < ndim; dm++){
-			os << "Dimension: " << dm << ", start: " << dom_start[dm] << ", end: " << dom_end[dm];
-			if(dim_n[dm] > 0) os << ", points: " << dim_n[dm];
-			os << std::endl;
-		}
-	}
 
 	//Default constructor
 	Bulk_Domain(): Generic_Domain(), dom_bulk_prev(NULL), dom_bulk_next(NULL),
@@ -112,6 +104,15 @@ public:
 	int dim_num(int dm) const {return dim_n[dm];}
 	const std::vector<int> &dim_num() const {return dim_n;}
 
+	// Prints domain starting and ending coordinates along every dimension
+	void print_domain(std::ostream& os) const{
+		for(int dm = 0; dm < ndim; dm++){
+			os << "Dimension: " << dm << ", start: " << dom_start[dm] << ", end: " << dom_end[dm];
+			if(dim_n[dm] > 0) os << ", points: " << dim_n[dm];
+			os << std::endl;
+		}
+	}
+
 	// Comparison operator
 	bool operator==(const Generic_Domain &dom) const{
 		const Bulk_Domain *tmp = dynamic_cast<const Bulk_Domain *>(&dom);
@@ -134,28 +135,6 @@ private:
 	std::vector<int> left_n_end;
 	std::vector<int> right_n_st;
 	std::vector<int> right_n_end;
-
-	// Prints domain starting and ending coordinates along every dimension
-	void print_domain(std::ostream& os) const{
-		os << "Boundary dimension: " << bound_dim << std::endl;
-		if(dom_left_side == NULL) os << "This boundary domain is adjacent to bulk domain " << dom_right_side->bulk_domain_number << " from the left\n";
-		else if(dom_right_side == NULL) os << "This boundary domain is adjacent to bulk domain " << dom_left_side->bulk_domain_number << " from the right\n";
-		else{
-			os << "This boundary domain is in between bulk domain " << dom_left_side->bulk_domain_number;
-			os << " and " << dom_right_side->bulk_domain_number << std::endl;
-		}
-		for(int dm = 0, ii = 0; dm < ndim; dm++){
-			os << "Dimension: " << dm << ", start: " << dom_start[dm] << ", end: " << dom_end[dm] << std::endl;
-			if(dm == bound_dim) continue;
-			if(left_n_end.size() > 0)
-				if(left_n_end[ii] != 0)
-					os << "Left point range along dimension " << dm << " is from " << left_n_st[ii] << " to " << left_n_end[ii] << std::endl;
-			if(right_n_end.size() > 0)
-				if(right_n_end[ii] != 0)
-					os << "Right point range along dimension " << dm << " is from " << right_n_st[ii] << " to " << right_n_end[ii] << std::endl;
-			ii++;
-		}
-	}
 
 	//Creates an edge boundary domain
 	Boundary_Domain(Bulk_Domain &b_dom, int edge_dim, bool left = true): boundary_dimension(bound_dim),
@@ -232,6 +211,28 @@ public:
 	Bulk_Domain *right_side_domain(){return dom_right_side;}
 	const Bulk_Domain *right_side_domain() const {return dom_right_side;}
 
+	// Prints domain starting and ending coordinates along every dimension
+	void print_domain(std::ostream& os) const{
+		os << "Boundary dimension: " << bound_dim << std::endl;
+		if(dom_left_side == NULL) os << "This boundary domain is adjacent to bulk domain " << dom_right_side->bulk_domain_number << " from the left\n";
+		else if(dom_right_side == NULL) os << "This boundary domain is adjacent to bulk domain " << dom_left_side->bulk_domain_number << " from the right\n";
+		else{
+			os << "This boundary domain is in between bulk domain " << dom_left_side->bulk_domain_number;
+			os << " and " << dom_right_side->bulk_domain_number << std::endl;
+		}
+		for(int dm = 0, ii = 0; dm < ndim; dm++){
+			os << "Dimension: " << dm << ", start: " << dom_start[dm] << ", end: " << dom_end[dm] << std::endl;
+			if(dm == bound_dim) continue;
+			if(left_n_end.size() > 0)
+				if(left_n_end[ii] != 0)
+					os << "Left point range along dimension " << dm << " is from " << left_n_st[ii] << " to " << left_n_end[ii] << std::endl;
+			if(right_n_end.size() > 0)
+				if(right_n_end[ii] != 0)
+					os << "Right point range along dimension " << dm << " is from " << right_n_st[ii] << " to " << right_n_end[ii] << std::endl;
+			ii++;
+		}
+	}
+
 	// Comparison operator
 	bool operator==(const Generic_Domain &dom) const{
 		const Boundary_Domain *tmp = dynamic_cast<const Boundary_Domain *>(&dom);
@@ -257,6 +258,10 @@ public:
 	int left_num_end(int dm) const {return left_n_end[dm];}
 	int right_num_st(int dm) const {return right_n_st[dm];}
 	int right_num_end(int dm) const {return right_n_end[dm];}
+	const std::vector<int> &left_num_st() const {return left_n_st;}
+	const std::vector<int> &left_num_end() const {return left_n_end;}
+	const std::vector<int> &right_num_st() const {return right_n_st;}
+	const std::vector<int> &right_num_end() const {return right_n_end;}
 };
 
 class Domain_Partitioning: public Generic_Domain_Partitioning{
@@ -283,7 +288,7 @@ public:
 			return;
 		}
 
-		//Preparing and included dimensions list
+		//Preparing an included dimensions list
 		std::vector<int> dim_left(ndim);
 		std::vector<int> dim_right(ndim);
 		std::iota(dim_left.begin(), dim_left.end(), 0);
@@ -622,7 +627,7 @@ public:
 	//Distributes domain points along the boundaries using a function func(start, end, n, position)
 	//that calculates point split position based on boundary start, end, number of points and position of the split
 	template<class Cut_Func>
-	void fill_boundary_point_range(const Cut_Func &func){
+	void fill_boundary_point_range(const Cut_Func &func, const std::unordered_set<int> &exclude_left = {}, const std::unordered_set<int> &exclude_right = {}){
 		if(!boundary_domains_inserted){
 			std::cout << "Warning! Trying to fill boundary point splitting for a partition with no boundaries" << std::endl;
 			return;
@@ -640,48 +645,48 @@ public:
 
 				if((bulk = dom->left_side_domain()) != NULL){
 					if(bulk->domain_start(dim) == dom->domain_start(dim))
-						if(dim < dom->boundary_dimension)
+						if(dim < dom->boundary_dimension && !(exclude_left.count(dim) && std::fabs(part_start[dim] - dom->dom_start[dim]) < COMP_TOL))
 							dom->left_n_st[indx] = 1;
 						else
 							dom->left_n_st[indx] = 0;
 					else
-						dom->left_n_st[indx] = func(bulk->domain_start(dim), bulk->domain_end(dim), bulk->dim_n[dim]-1, dom->domain_start(dim)) + 1;
+						dom->left_n_st[indx] = func(dim, bulk->domain_start(dim), bulk->domain_end(dim), bulk->dim_n[dim], dom->domain_start(dim)) + 1;
 					if(bulk->domain_end(dim) == dom->domain_end(dim))
-						if(dim < dom->boundary_dimension)
+						if(dim < dom->boundary_dimension && !(exclude_right.count(dim) && std::fabs(part_end[dim] - dom->dom_end[dim]) < COMP_TOL))
 							dom->left_n_end[indx] = bulk->dim_n[dim]-2;
 						else
 							dom->left_n_end[indx] = bulk->dim_n[dim]-1;
 					else
-						dom->left_n_end[indx] =  func(bulk->domain_start(dim), bulk->domain_end(dim), bulk->dim_n[dim]-1, dom->domain_end(dim));
+						dom->left_n_end[indx] = func(dim, bulk->domain_start(dim), bulk->domain_end(dim), bulk->dim_n[dim], dom->domain_end(dim));
 				}
 				if((bulk = dom->right_side_domain()) != NULL){
 					if(bulk->domain_start(dim) == dom->domain_start(dim))
-						if(dim < dom->boundary_dimension)
+						if(dim < dom->boundary_dimension && !(exclude_left.count(dim) && std::fabs(part_start[dim] - dom->dom_start[dim]) < COMP_TOL))
 							dom->right_n_st[indx] = 1;
 						else
 							dom->right_n_st[indx] = 0;
 					else
-						dom->right_n_st[indx] = func(bulk->domain_start(dim), bulk->domain_end(dim), bulk->dim_n[dim]-1, dom->domain_start(dim)) + 1;
+						dom->right_n_st[indx] = func(dim, bulk->domain_start(dim), bulk->domain_end(dim), bulk->dim_n[dim], dom->domain_start(dim)) + 1;
 					if(bulk->domain_end(dim) == dom->domain_end(dim))
-						if(dim < dom->boundary_dimension)
+						if(dim < dom->boundary_dimension && !(exclude_right.count(dim) && std::fabs(part_end[dim] - dom->dom_end[dim]) < COMP_TOL))
 							dom->right_n_end[indx] = bulk->dim_n[dim]-2;
 						else
 							dom->right_n_end[indx] = bulk->dim_n[dim]-1;
 					else
-						dom->right_n_end[indx] = func(bulk->domain_start(dim), bulk->domain_end(dim), bulk->dim_n[dim]-1, dom->domain_end(dim));
+						dom->right_n_end[indx] = func(dim, bulk->domain_start(dim), bulk->domain_end(dim), bulk->dim_n[dim], dom->domain_end(dim));
 				}
 				indx++;
 			}
 		}
 
-		verify_boundary_point_splitting();
+		verify_boundary_point_splitting(exclude_left, exclude_right);
 	}
 
 	//Functions that verify domain consistency
 	//Verifies that all the domains are interconnected
 	void verify_ordering(bool verbose = false);
 	//Verifies that the boundaries have points consistent with bulk domains
-	void verify_boundary_point_splitting();
+	void verify_boundary_point_splitting(const std::unordered_set<int> &exclude_left, const std::unordered_set<int> &exclude_right);
 	
 	//Functions that load and save domains
 	void save_domains(const std::string &file_name);
