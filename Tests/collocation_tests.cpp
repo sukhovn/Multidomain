@@ -282,7 +282,7 @@ void collocation_2D_container_test(const std::string &test_folder, int argc, cha
 	return;
 }
 
-double vector_max(const std::vector<double> &vec){
+static double vector_max(const std::vector<double> &vec){
 	double max = vec[0];
 	for(int i = 1; i < vec.size(); ++i)
 		if(vec[i] > max) max = vec[i];

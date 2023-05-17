@@ -487,26 +487,35 @@ public:
 		verify_container_solver_correspondence();
 		double tmp;
 		std::vector<double> max_diff(nfunc, 0.0);
-		unsigned int extr = 0;
-		unsigned int imin, imax, jmin, jmax;
 		std::vector<unsigned int> ind(n_dim);
-		if(interior_check_only) extr = 1;
 
 		for(const Bulk_Domain *bulk = first_bulk_domain; bulk != NULL; bulk = bulk->next_bulk_domain()){
-			int dm = bulk->bulk_domain_number;
 			int iter_size = 1;
-			std::vector<int> margins(n_dim);
-			for(int i = 0; i < n_dim; i++) {iter_size *= (margins[i] = bulk->dim_num(i) - 2*extr);}
+			std::vector<int> shift(n_dim, 0), margins(bulk->dim_num());
+			if(interior_check_only){
+				for(int i = 0; i < n_dim; i++){
+					if(!cont->parity_st[i].empty() && std::fabs(bulk->domain_start(i) - cont->partition_start(i)) < COMP_TOL)
+						iter_size *= --margins[i];
+					else if(!cont->parity_end[i].empty() && std::fabs(bulk->domain_end(i) -  cont->partition_end(i)) < COMP_TOL){
+						shift[i] = 1;
+						iter_size *= --margins[i];
+					}
+					else{
+						shift[i] = 1;
+						iter_size *= (margins[i] -= 2);
+					}
+				}
+			}
+			else
+				iter_size = std::accumulate(margins.begin(), margins.end(), 1, std::multiplies<double>());
 
 			for(int indx = 0; indx < iter_size; indx++){
 				for(int i = n_dim-1, tmpi = indx; i >= 0; i--){
-					if((ind[i] = (tmpi % margins[i]) + extr) > extr){
-						break;
-					}
+					if((ind[i] = (tmpi % margins[i]) + shift[i]) > shift[i]) break;
 					tmpi /= margins[i];
 				}
 
-				pnt.get_point(dm, ind, true);
+				pnt.get_point(bulk->bulk_domain_number, ind, true);
 				for(int fn = 0; fn < nfunc; fn++){
 					tmp = std::fabs((eq_system->*func)(fn, pnt.x, pnt.phi, pnt.dphi, pnt.ddphi));
 					if(tmp > max_diff[fn]) max_diff[fn] = tmp;
