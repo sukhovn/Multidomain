@@ -64,7 +64,7 @@ public:
 			return xst + xshift/(1 + xshift*cc);
 		}
 		else
-			return x[dim];
+			return x[dm];
 	}
 };
 

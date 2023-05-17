@@ -20,6 +20,38 @@ Domain_Partitioning get_partitioning_from_data(const std::string &folder_name);
 
 class Indexer;
 class Collocation_Matrix;
+class Container;
+
+class Evaluator: public Domain_Partitioning{
+private:
+	int nfunc;
+
+	int npoints;
+	double *data;
+	std::vector<int> index_st;
+
+	std::vector<std::vector<bool>> parity_st; //false - even, true - odd, empty - no doubling
+	std::vector<std::vector<bool>> parity_end;
+
+public:
+	Evaluator(const Container &cont);
+
+	Evaluator(Evaluator &&evali): Domain_Partitioning(std::move(evali)),
+		nfunc(evali.nfunc), npoints(evali.npoints), data(evali.data), index_st(evali.index_st)
+	{
+		evali.data = NULL;
+	}
+
+	~Evaluator(){
+		if(data != NULL) delete [] data;
+	}
+
+	double operator()(const std::vector<double> &coord, int fn) const;
+
+	double test(const Container &cont);
+
+	friend class Container;
+};
 
 class Container: protected Domain_Partitioning{
 private:
@@ -248,6 +280,49 @@ public:
 	void save(const std::string &folder_name) const;
 	void load(const std::string &folder_name);
 
+	template<class Compactification>
+	void regrid(const Domain_Partitioning &part_new, const Compactification &comp_old, const Compactification &comp_new, double value_at_infinity = 0.0){
+		if(part_new.n_dim != n_dim){
+			std::cout << "Regrid cannot change dimensions" << std::endl;
+			throw("Regrid dimension change");
+		}
+
+		Domain_Partitioning part(part_new);
+		if(part.boundary_domains_present()) part.clear_boundary_domains();
+
+		if(this->compare_bulk_domains(part)){
+			std::cout << "No container regridding is needed" << std::endl;
+			return;
+		}
+
+		Evaluator eval(*this);
+
+		reallocate_partitioning(part);
+
+		int indx = 0, dim;
+		std::vector<double> coords(n_dim), coords_old(n_dim);
+		for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+			for(int ind = 0; ind < dom->size; ind++){
+				update_coordinate(dom, ind, coords.data());
+				for(dim = 0; dim < n_dim; ++dim){
+					coords_old[dim] = comp_new.xc(dim, coords.data());
+					if(std::isinf(coords_old[dim]))
+						break;
+					else
+						coords_old[dim] = comp_old.xc_inv(dim, coords_old.data());
+				}
+				if(dim < n_dim){
+					for(int fn = 0; fn < nfunc; fn++)
+						data[indx++] = value_at_infinity;
+				}
+				else{
+					for(int fn = 0; fn < nfunc; fn++)
+						data[indx++] = eval(coords_old, fn);
+				}
+			}
+		}
+	}
+
 	friend class Indexer;
 	friend class Collocation_Matrix;
 	friend class Evaluator;
@@ -440,64 +515,6 @@ public:
 			}
 		}
 	}
-};
-
-class Evaluator: public Domain_Partitioning{
-private:
-	int nfunc;
-
-	int npoints;
-	double *data;
-	std::vector<int> index_st;
-
-	std::vector<std::vector<bool>> parity_st; //false - even, true - odd, empty - no doubling
-	std::vector<std::vector<bool>> parity_end;
-
-public:
-	Evaluator(const Container &cont);
-
-	Evaluator(Evaluator &&evali): Domain_Partitioning(std::move(evali)),
-		nfunc(evali.nfunc), npoints(evali.npoints), data(evali.data), index_st(evali.index_st)
-	{
-		evali.data = NULL;
-	}
-
-	~Evaluator(){
-		if(data != NULL) delete [] data;
-	}
-
-	double operator()(const std::vector<double> &coord, int fn) const;
-
-	double test(const Container &cont){
-		int indx = 0, i;
-		double max = 0.0, tmp;
-
-		std::vector<double> coord(n_dim);
-		for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
-			for(int ind = 0; ind < dom->size; ind++){
-				for(int dim = n_dim-1, tmpi = ind; dim >= 0; dim--){
-					i = tmpi % dom->dim_num(dim);
-					if(!parity_st[dim].empty() && std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL)
-						coord[dim] = ch_x(2.0*dom->domain_start(dim)-dom->domain_end(dim), dom->domain_end(dim), 2*dom->dim_num(dim)-1, dom->dim_num(dim)+i);
-					else if(!parity_end[dim].empty() && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL)
-						coord[dim] = ch_x(dom->domain_start(dim), 2*dom->domain_end(dim)-dom->domain_start(dim), 2*dom->dim_num(dim)-1, i);
-					else
-						coord[dim] = ch_x(dom->domain_start(dim), dom->domain_end(dim), dom->dim_num(dim)-1, i);
-					if(i) break;
-					tmpi /= dom->dim_num(dim);
-				}
-				for(int fn = 0; fn < nfunc; fn++){
-					tmp = std::fabs(cont.data[indx++] - (*this)(coord, fn));
-					if(tmp > max) max = tmp;
-				}
-			}
-		}
-
-		std::cout << "Maximal discrepancy is " << max << std::endl;
-		return max;
-	}
-
-	friend class Container;
 };
 
 #endif

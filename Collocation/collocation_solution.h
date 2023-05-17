@@ -44,9 +44,9 @@ public:
 	bool verify_container_solution_correspondence(void){
 		if(compare_bulk_domains(*cont)) return false;
 		Domain_Partitioning part(*cont);
-		if(boundary_domains_present()){
-			fill_boundary_domains(*this);
-		}
+		if(part.boundary_domains_present())
+			part.clear_boundary_domains();
+		fill_boundary_domains(part);
 		this->Domain_Partitioning::operator=(part);
 		return true;
 	}
@@ -57,46 +57,31 @@ public:
 		verify_container_solution_correspondence();
 	}
 
-	// template<class Callable>
-	// void fill_seed(Callable func, double value_at_infinity = 0.0){
-	// 	verify_container_solution_correspondence();
-	// 	unsigned int itmp, itr = 0;
-	// 	std::vector<unsigned int> ind(n_dim);
-	// 	double *x_c = new double[n_dim];
-	// 	double *x_tmp = new double[n_dim];
+	template<class Callable>
+	void fill_seed(Callable func, double value_at_infinity = 0.0){
+		verify_container_solution_correspondence();
 
-	// 	for(const Bulk_Domain *bulk = first_bulk_domain; bulk != NULL; bulk = bulk->next_bulk_domain()){
-	// 		int dm = bulk->bulk_domain_number;
-
-	// 		for(int indx = 0; indx < bulk->size; indx++){
-	// 			for(int i = n_dim-1, tmpi = indx; i >= 0; i--){
-	// 				itmp = tmpi % bulk->dim_num(i);
-	// 				x_c[i] = ch_x(bulk->domain_start(i), bulk->domain_end(i), bulk->dim_num(i)-1, itmp);
-	// 				if(itmp) break;
-	// 				tmpi /= bulk->dim_num(i);
-	// 			}
-
-	// 			bool is_inf = false;
-	// 			for(int i = 0; i < n_dim; i++){
-	// 				x_tmp[i] = pnt.compact.xc(i, x_c);
-	// 				if(std::isinf(x_tmp[i])){
-	// 					is_inf = true;
-	// 					break;
-	// 				}
-	// 			}
-
-	// 			if(is_inf){
-	// 				for(int fn = 0; fn < cont->nfunc; fn++) cont->data[itr++] = value_at_infinity;
-	// 				continue;
-	// 			}
-	// 			for(int fn = 0; fn < cont->nfunc; fn++)
-	// 				cont->data[itr++] = func(fn, x_tmp);
-	// 		}
-	// 	}
-
-	// 	delete [] x_c;
-	// 	delete [] x_tmp;
-	// }
+		int indx = 0, dim;
+		std::vector<double> coords_comp(n_dim), coords(n_dim);
+		for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+			for(int ind = 0; ind < dom->size; ind++){
+				cont->update_coordinate(dom, ind, coords_comp.data());
+				for(dim = 0; dim < n_dim; ++dim){
+					coords[dim] = pnt.compact.xc(dim, coords_comp.data());
+					if(std::isinf(coords[dim]))
+						break;
+				}
+				if(dim < n_dim){
+					for(int fn = 0; fn < cont->nfunc; fn++)
+						cont->data[indx++] = value_at_infinity;
+				}
+				else{
+					for(int fn = 0; fn < cont->nfunc; fn++)
+						cont->data[indx++] = func(fn, coords.data());
+				}
+			}
+		}
+	}
 };
 
 #endif

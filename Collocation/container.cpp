@@ -611,3 +611,32 @@ double Evaluator::operator()(const std::vector<double> &coord, int fn) const{
 
 	return reslt; 
 }
+
+double Evaluator::test(const Container &cont){
+	int indx = 0, i;
+	double max = 0.0, tmp;
+
+	std::vector<double> coord(n_dim);
+	for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+		for(int ind = 0; ind < dom->size; ind++){
+			for(int dim = n_dim-1, tmpi = ind; dim >= 0; dim--){
+				i = tmpi % dom->dim_num(dim);
+				if(!parity_st[dim].empty() && std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL)
+					coord[dim] = ch_x(2.0*dom->domain_start(dim)-dom->domain_end(dim), dom->domain_end(dim), 2*dom->dim_num(dim)-1, dom->dim_num(dim)+i);
+				else if(!parity_end[dim].empty() && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL)
+					coord[dim] = ch_x(dom->domain_start(dim), 2*dom->domain_end(dim)-dom->domain_start(dim), 2*dom->dim_num(dim)-1, i);
+				else
+					coord[dim] = ch_x(dom->domain_start(dim), dom->domain_end(dim), dom->dim_num(dim)-1, i);
+				if(i) break;
+				tmpi /= dom->dim_num(dim);
+			}
+			for(int fn = 0; fn < nfunc; fn++){
+				tmp = std::fabs(cont.data[indx++] - (*this)(coord, fn));
+				if(tmp > max) max = tmp;
+			}
+		}
+	}
+
+	std::cout << "Maximal discrepancy is " << max << std::endl;
+	return max;
+}

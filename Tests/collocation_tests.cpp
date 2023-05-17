@@ -270,14 +270,45 @@ void collocation_2D_container_test(const std::string &test_folder, int argc, cha
 	std::cout << std::endl;
 
 	std::cout << "Testing point class on sin function" << std::endl;
-	Domain_Partitioning part_point("Tests/domains_2D_test.dat");
-	tcont.adjust_partitioning(part_point);
+	Domain_Partitioning part_new("Tests/domains_2D_test.dat");
+	tcont.adjust_partitioning(part_new);
 	tcont.reset_doubling();
 	tcont.set_doubling_begin(0, {true, false});
 	tcont.set_doubling_begin(1, {true, false});
 	tcont.set_doubling_end(0, {true, false});
 	tcont.set_doubling_end(1, {true, false});
 	point_class_test(tcont, sin_func);
+	std::cout << std::endl;
+
+	std::cout << "Testing regridding" << std::endl;
+	No_Compactification no_compact;
+
+	tcont.adjust_partitioning(part_sin);
+	tcont.reset_doubling();
+	tcont.set_doubling_begin(0, {true, false});
+	tcont.set_doubling_begin(1, {true, false});
+	tcont.set_doubling_end(0, {true, false});
+	tcont.set_doubling_end(1, {true, false});
+	tcont.fill_function(sin_func);
+
+	part_new.print_domain_2D(test_folder + "/domains_2D_test.pbm");
+	tcont.regrid(part_new, no_compact, no_compact);
+	std::cout << "The difference is: " << tcont.compare_function(sin_func) << std::endl;
+	tcont.save(test_folder + "/cont_test_regrid");
+
+	part_new.domain_split({0.6, 0.6}, 0);
+	part_new.print_domain_2D(test_folder + "/domains_2D_test_split.pbm");
+
+	tcont.regrid(part_new, no_compact, no_compact);
+	std::cout << "The difference is: " << tcont.compare_function(sin_func) << std::endl;
+	tcont.save(test_folder + "/cont_test_regrid_2");
+
+	part_new.move_domain_wall({0.8, 0.5}, 0.7);
+	part_new.print_domain_2D(test_folder + "/domains_2D_test_split_move.pbm");
+
+	tcont.regrid(part_new, no_compact, no_compact);
+	std::cout << "The difference is: " << tcont.compare_function(sin_func) << std::endl;
+	tcont.save(test_folder + "/cont_test_regrid_3");
 
 	return;
 }
@@ -374,10 +405,14 @@ void collocation_3D_container_test(const std::string &test_folder, int argc, cha
 	Domain_Partitioning bpart("Tests/simple_domains_3D.dat");
 
 	Container cont(1, bpart);
+	cont.set_doubling_begin(0, {true});
+	cont.set_doubling_begin(1, {true});
+	cont.set_doubling_begin(2, {true});
+	cont.set_doubling_end(0, {true});
+	// cont.set_doubling_end(1, {true});
+	// cont.set_doubling_end(2, {true});
 
 	cont.partition.print_domain_3D(test_folder + "/domains_3D_test");
-	// std::cout << "Partitioning\n" << std::endl;
-	// print_partitioning(cont);
 
 	cont.fill_function(sin_func_3D);
 	cont.save(test_folder + "/cont_test_3D");
@@ -391,11 +426,14 @@ void collocation_3D_container_test(const std::string &test_folder, int argc, cha
 
 	Evaluator eval(cont);
 	eval.test(cont);
+	std::cout << std::endl;
 
-	// bpart.domain_split({0.2, 0.2, 0.2}, 0);
+	std::cout << "Testing regridding" << std::endl;
+	No_Compactification no_compact;
+	bpart.domain_split({0.2, 0.2, 0.2}, 0);
 
-	// cont.regrid(bpart);
-	// std::cout << "The difference is: " << cont.compare_function(sin_func_3D) << std::endl;
+	cont.regrid(bpart, no_compact, no_compact);
+	std::cout << "The difference is: " << cont.compare_function(sin_func_3D) << std::endl;
 
 	return;
 }
