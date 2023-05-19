@@ -82,6 +82,42 @@ public:
 			}
 		}
 	}
+
+	template<class Callable>
+	Container evaluate_function(Callable func, int nfunc_fill, double value_at_infinity = 0.0){
+		verify_container_solution_correspondence();
+
+		Container result(nfunc_fill, cont->partition);
+		for(int dim = 0; dim < n_dim; ++dim){
+			if(!cont->parity_st[dim].empty()) result.parity_st[dim] = std::vector<bool>(nfunc_fill, false);
+		}
+		for(int dim = 0; dim < n_dim; ++dim){
+			if(!cont->parity_end[dim].empty()) result.parity_end[dim] = std::vector<bool>(nfunc_fill, false);
+		}
+
+		int indx = 0;
+		for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+			std::vector<unsigned int> ind(n_dim);
+
+			for(int dindx = 0; dindx < dom->size; dindx++){
+				for(int i = n_dim-1, tmpi = dindx; i >= 0; i--){
+					if(ind[i] = (tmpi % dom->dim_num(i))) break;
+					tmpi /= dom->dim_num(i);
+				}
+				if(pnt.get_point(dom->bulk_domain_number, ind, true)){
+					for(int fn = 0; fn < nfunc_fill; ++fn)
+						result.data[indx++] = 0.0;
+				}
+				else{
+					for(int fn = 0; fn < nfunc_fill; ++fn){
+						result.data[indx++] = func(fn, pnt.x, pnt.phi, pnt.dphi, pnt.ddphi);
+					}
+				}
+			}
+		}
+
+		return result;
+	}
 };
 
 #endif

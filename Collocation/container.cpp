@@ -612,7 +612,190 @@ double Evaluator::operator()(const std::vector<double> &coord, int fn) const{
 	return reslt; 
 }
 
-double Evaluator::test(const Container &cont){
+double Evaluator::d(int ddim, const std::vector<double> &coord, int fn) const{
+	const Bulk_Domain *dom = this->Domain_Partitioning::operator()(coord);
+	int indx = index_st[dom->bulk_domain_number] + (dom->size - 1)*nfunc + fn;
+
+	int j;
+	double sv, reslt, reslt_der, der_domain_size;
+	std::vector<double> y2(n_dim), d(n_dim, 0.0), dd(n_dim, 0.0), d_der(n_dim, 0.0), dd_der(n_dim, 0.0), xorig(n_dim, 0.0);
+	for(int dim = 0; dim < n_dim; dim++){
+		if(!parity_st[dim].empty() && std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL){
+			xorig[dim] = (dom->domain_start(dim) - coord[dim])/(dom->domain_end(dim) - dom->domain_start(dim));
+			y2[dim] = 4.0*xorig[dim]*xorig[dim] - 2.0;
+			if(dim == ddim) der_domain_size = 2.0*(dom->domain_start(dim) - dom->domain_end(dim));
+		}
+		else if(!parity_end[dim].empty() && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL){
+			xorig[dim] = (dom->domain_end(dim) - coord[dim])/(dom->domain_end(dim) - dom->domain_start(dim));
+			y2[dim] = 4.0*xorig[dim]*xorig[dim] - 2.0;
+			if(dim == ddim) der_domain_size = 2.0*(dom->domain_start(dim) - dom->domain_end(dim));
+		}
+		else{
+			y2[dim] = 2.0*(dom->domain_start(dim) + dom->domain_end(dim) - 2.0 * coord[dim])/(dom->domain_end(dim) - dom->domain_start(dim));
+			if(dim == ddim) der_domain_size = dom->domain_start(dim) - dom->domain_end(dim);
+		}
+	}
+
+	for(int ind = dom->size-1; ind >= 0; ind--){
+		if(j = ind % dom->dim_num(n_dim-1)){
+			if(ddim == n_dim-1){
+				if(j > 1){
+					sv = d_der[n_dim-1];
+					d_der[n_dim-1] = (y2[n_dim-1] * (j+1) * d_der[n_dim-1] - (j+2) * dd_der[n_dim-1])/(1.0*j) + data[indx];
+					dd_der[n_dim-1] = sv;
+				}
+				else if (j == 1){
+					reslt_der = (2.0 * y2[n_dim-1] * d_der[n_dim-1] - 3.0 * dd_der[n_dim-1] + data[indx]) * 2.0 / der_domain_size;
+				}
+			}
+			sv = d[n_dim-1];
+			d[n_dim-1] = y2[n_dim-1] * d[n_dim-1] - dd[n_dim-1] + data[indx];
+			dd[n_dim-1] = sv;
+		}
+		else{
+			reslt = 0.5 * y2[n_dim-1] * d[n_dim-1] - dd[n_dim-1] + 0.5 * data[indx];
+
+			for(int dim = n_dim-2, tmpi = ind; dim >= 0; dim--){
+				tmpi /= dom->dim_num(dim+1);
+				d[dim+1] = 0.0;
+				dd[dim+1] = 0.0;
+				d_der[dim+1] = 0.0;
+				dd_der[dim+1] = 0.0;
+
+				if(j = tmpi % dom->dim_num(dim)){
+					sv = d[dim];
+					d[dim] = y2[dim] * d[dim] - dd[dim] + reslt;
+					dd[dim] = sv;
+
+					if(dim == ddim){
+						if(j > 1){
+							sv = d_der[dim];
+							d_der[dim] = (y2[dim] * (j+1) * d_der[dim] - (j+2) * dd_der[dim])/(1.0*j) + reslt;
+							dd_der[dim] = sv;
+						}
+						else if(j == 1){
+							reslt_der = (2.0 * y2[dim] * d_der[dim] - 3.0 * dd_der[dim] + reslt) * 2.0 / der_domain_size;
+						}
+					}
+					else if(dim < ddim){
+						sv = d_der[dim];
+						d_der[dim] = y2[dim] * d_der[dim] - dd_der[dim] + reslt_der;
+						dd_der[dim] = sv;
+					}
+
+					break;
+				}
+				else{
+					reslt = 0.5 * y2[dim] * d[dim] - dd[dim] + 0.5 * reslt;
+
+					if(dim < ddim){
+						reslt_der = 0.5 * y2[dim] * d_der[dim] - dd_der[dim] + 0.5 * reslt_der;
+					}
+				}
+			}
+		}
+		indx -= nfunc;
+	}
+
+	for(int dim = 0; dim < n_dim; ++dim){
+		if(dim == ddim) continue;
+		if((!parity_st[dim].empty() && std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL && parity_st[dim][fn]) ||
+			(!parity_end[dim].empty() && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL && parity_end[dim][fn])){
+				reslt *= xorig[dim];
+				reslt_der *= xorig[dim];
+			}
+	}
+	if(!parity_st[ddim].empty() && std::fabs(dom->domain_start(ddim) - partition_start(ddim)) < COMP_TOL){
+		if(parity_st[ddim][fn])
+			reslt_der = 4.0*xorig[ddim]*xorig[ddim]*reslt_der - reslt;
+		else
+			reslt_der *= 4.0*xorig[ddim];
+	}
+	if(!parity_end[ddim].empty() && std::fabs(dom->domain_end(ddim) - partition_end(ddim)) < COMP_TOL){
+		if(parity_end[ddim][fn])
+			reslt_der = 4.0*xorig[ddim]*xorig[ddim]*reslt_der - reslt;
+		else
+			reslt_der *= 4.0*xorig[ddim];
+	}
+
+	return reslt_der;
+}
+
+std::vector<double> Evaluator::integrate() const{
+	std::vector<double> total_sum(nfunc, 0.0);
+
+	for(int dim = 0; dim < n_dim; ++dim){
+		if(!std::none_of(parity_st[dim].begin(), parity_st[dim].end(), [](bool v){return v;}) ||
+			!std::none_of(parity_end[dim].begin(), parity_end[dim].end(), [](bool v){return v;}))
+		{
+			std::cout << "Integration of odd domains is not supported" << std::endl;
+			throw("Integration of odd domains is not supported");
+		}
+	}
+
+	for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+		std::vector<std::vector<double>> part_sum(n_dim);
+		std::fill(part_sum.begin(), part_sum.end(), std::vector<double>(nfunc, 0.0));
+
+		int ind = index_st[dom->bulk_domain_number];
+		std::vector<int> indx(n_dim), nx_run(dom->dim_num());
+		for(int dim = n_dim-1, tmp = nfunc; dim >= 0; --dim){
+			if((parity_st[dim].empty() || std::fabs(dom->domain_start(dim) - partition_start(dim)) > COMP_TOL) &&
+				(parity_end[dim].empty() || std::fabs(dom->domain_end(dim) - partition_end(dim)) > COMP_TOL))
+			{
+				nx_run[dim] = nx_run[dim]/2 + nx_run[dim]%2;
+				ind += 2*(nx_run[dim]-1)*tmp;
+			}
+			else
+				ind += (nx_run[dim]-1)*tmp;
+			indx[dim] = nx_run[dim]-1;
+			tmp *= dom->dim_num(dim);
+		}
+
+		while(1){
+			for(int fn = 0; fn < nfunc; ++fn){
+				if(indx[n_dim-1])
+					part_sum[n_dim-1][fn] -= data[ind+fn]/(4.0*indx[n_dim-1]*indx[n_dim-1] - 1.0);
+				else
+					part_sum[n_dim-1][fn] += 0.5*data[ind+fn];
+			}
+
+			int dim, tmp;
+			for(dim = n_dim-1, tmp = nfunc; dim >= 0; --dim){
+				--indx[dim];
+				if(nx_run[dim] == dom->dim_num(dim)) ind -= tmp;
+				else ind -= 2*tmp;
+				if(indx[dim] >= 0) break;
+
+				if(dim){
+					for(int fn = 0; fn < nfunc; ++fn){
+						if(indx[dim-1])
+							part_sum[dim-1][fn] -= part_sum[dim][fn]/(4.0*indx[dim-1]*indx[dim-1] - 1.0);
+						else
+							part_sum[dim-1][fn] += 0.5*part_sum[dim][fn];
+						part_sum[dim][fn] = 0.0;
+					}
+				}
+
+				indx[dim] = nx_run[dim]-1;
+				if(nx_run[dim] == dom->dim_num(dim)) ind += nx_run[dim]*tmp;
+				else ind += 2*nx_run[dim]*tmp;
+				tmp *= dom->dim_num(dim);
+			}
+			if(dim < 0) break;
+		}
+
+		for(int dim = 0; dim < n_dim; ++dim){
+			double factor = dom->domain_end(dim) - dom->domain_start(dim);
+			for(int fn = 0; fn < nfunc; ++fn) part_sum[0][fn] *= factor;
+		}
+
+		for(int fn = 0; fn < nfunc; ++fn) total_sum[fn] += part_sum[0][fn];
+	}
+	return total_sum;
+};
+
+double Evaluator::test(const Container &cont, int der){
 	int indx = 0, i;
 	double max = 0.0, tmp;
 
@@ -631,7 +814,10 @@ double Evaluator::test(const Container &cont){
 				tmpi /= dom->dim_num(dim);
 			}
 			for(int fn = 0; fn < nfunc; fn++){
-				tmp = std::fabs(cont.data[indx++] - (*this)(coord, fn));
+				if(der < 0)
+					tmp = std::fabs(cont.data[indx++] - (*this)(coord, fn));
+				else
+					tmp = std::fabs(cont.data[indx++] - d(der, coord, fn));
 				if(tmp > max) max = tmp;
 			}
 		}

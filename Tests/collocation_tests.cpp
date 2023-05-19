@@ -103,7 +103,7 @@ struct Differentiation_Matrix_Test{
 	}
 };
 
-void collocation_doubling_test(int ndim){
+void collocation_doubling_test(int ndim, int der_dim = -1){
 	// On each dimension 5 possible combinations:
 	// 0 - no doubling
 	// 1 - even doubling from the left
@@ -137,9 +137,55 @@ void collocation_doubling_test(int ndim){
 			}
 			return res;
 		}
+
+		double derivative(int ddim, int fn, double *x) const{
+			double res = 1.0;
+			for(int dim = 0; dim < doubling_condition.size(); ++dim){
+				if(dim == ddim){
+					switch(doubling_condition[dim]){
+						case 0:
+							res *= std::exp(x[dim]);
+							break;
+						case 1:
+							res *= M_PI*x[dim]*std::cos(M_PI*x[dim]) + std::sin(M_PI*x[dim]);
+							break;
+						case 2:
+							res *= std::cos(M_PI*x[dim]) - M_PI*x[dim]*std::sin(M_PI*x[dim]);
+							break;
+						case 3:
+							res *= M_PI*(1.0-x[dim])*std::cos(M_PI*x[dim]) - std::sin(M_PI*x[dim]);
+							break;
+						case 4:
+							res *= -M_PI*(1.0-x[dim])*std::sin(M_PI*x[dim]) - std::cos(M_PI*x[dim]);
+							break;
+					}
+				}
+				else{
+					switch(doubling_condition[dim]){
+						case 0:
+							res *= std::exp(x[dim]);
+							break;
+						case 1:
+							res *= x[dim]*std::sin(M_PI*x[dim]);
+							break;
+						case 2:
+							res *= x[dim]*std::cos(M_PI*x[dim]);
+							break;
+						case 3:
+							res *= (1.0-x[dim])*std::sin(M_PI*x[dim]);
+							break;
+						case 4:
+							res *= (1.0-x[dim])*std::cos(M_PI*x[dim]);
+							break;
+					}
+				}
+			}
+			return res;
+		}
 	};
 
 	std::cout << "Running comprehensive domain doubling check" << std::endl;
+	if(der_dim >= 0) std::cout << "Checking derivative along dimension " << der_dim << std::endl;
 	std::vector<double> start(ndim, 0.0), lengths(ndim, 1.0);
 	std::vector<int> sizes(ndim, 20), condition(ndim, 0), max_discrepancy;
 	double tmp, max = 0.0;
@@ -169,12 +215,45 @@ void collocation_doubling_test(int ndim){
 		Doubling_Check check_function(condition);
 		tcont.fill_function(check_function);
 		Evaluator eval(tcont);
-		tmp = eval.test(tcont);
-		if(tmp > max){
-			max = tmp;
-			max_discrepancy = condition;
+
+		if(der_dim < 0){
+			tmp = eval.test(tcont);
+			if(tmp > max){
+				max = tmp;
+				max_discrepancy = condition;
+			}
+			std::cout << std::endl;
 		}
-		std::cout << std::endl;
+		else{
+			Container tcont_d(1, part_test);
+			for(int dim = 0; dim < condition.size(); ++dim){
+				switch(condition[dim]){
+					case 1:
+						if(dim == der_dim) tcont_d.set_doubling_begin(dim, {true});
+						else tcont_d.set_doubling_begin(dim, {false});
+						break;
+					case 2:
+						if(dim == der_dim) tcont_d.set_doubling_begin(dim, {false});
+						else tcont_d.set_doubling_begin(dim, {true});
+						break;
+					case 3:
+						if(dim == der_dim) tcont_d.set_doubling_end(dim, {true});
+						else tcont_d.set_doubling_end(dim, {false});
+						break;
+					case 4:
+						if(dim == der_dim) tcont_d.set_doubling_end(dim, {false});
+						else tcont_d.set_doubling_end(dim, {true});
+						break;
+				}
+			}
+			tcont_d.fill_function([&check_function, &der_dim](int fn, double *x){return check_function.derivative(der_dim, fn, x);});
+			tmp = eval.test(tcont_d, der_dim);
+			if(tmp > max){
+				max = tmp;
+				max_discrepancy = condition;
+			}
+			std::cout << std::endl;
+		}
 
 		int dim;
 		for(dim = condition.size()-1; dim >= 0; --dim){
@@ -259,8 +338,13 @@ void collocation_2D_container_test(const std::string &test_folder, int argc, cha
 
 	std::cout << "Evaluator test" << std::endl;
 	collocation_doubling_test(2);
+	std::cout << std::endl;
+	collocation_doubling_test(2, 0);
+	std::cout << std::endl;
+	collocation_doubling_test(2, 1);
+	std::cout << std::endl;
 
-	std::cout << "\nRunning evaluator test on gaussian profile function" << std::endl;
+	std::cout << "Running evaluator test on gaussian profile function" << std::endl;
 	Evaluator eval(tcont);
 	eval.test(tcont);
 	std::cout << std::endl;
@@ -352,8 +436,9 @@ void collocation_2D_collocation_fill_test(const std::string &test_folder, int ar
 
 	std::cout << "The difference is: " << vector_max(solver.find_function_maximum(&Test_Equations::solution_check, 2)) << std::endl;
 
-	// std::cout << "The integral is: " << solver.integrate_function(pure_field_square) << std::endl;
-	// std::cout << "The true integral value is: 0.25" << std::endl;
+	Evaluator eval_square(solver.evaluate_function([](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];}, 1));
+	std::cout << "The integral is: " << eval_square.integrate()[0] << std::endl;
+	std::cout << "The true integral value is: 0.25" << std::endl;
 
 	// solver.fill_seed(sin_func);
 	// Evaluator eval = solver.get_function_evaluator([](double *x, double *phi, double **dphi, double **ddphi){return -phi[0];});
@@ -423,6 +508,12 @@ void collocation_3D_container_test(const std::string &test_folder, int argc, cha
 	std::cout << "Evaluator test" << std::endl;
 	collocation_doubling_test(3);
 	std::cout << std::endl;
+	// collocation_doubling_test(3, 0);
+	// std::cout << std::endl;
+	// collocation_doubling_test(3, 1);
+	// std::cout << std::endl;
+	// collocation_doubling_test(3, 2);
+	// std::cout << std::endl;
 
 	Evaluator eval(cont);
 	eval.test(cont);
@@ -472,8 +563,9 @@ void collocation_3D_collocation_fill_test(const std::string &test_folder, int ar
 	cont.save(test_folder + "/cont_test_3D");
 
 	std::cout << "The difference is: " << vector_max(solver.find_function_maximum(&Test_Equations_3D::solution_check)) << std::endl;
-	// std::cout << "The integral is: " << solver.integrate_function(pure_field_square) << std::endl;
-	// std::cout << "The true integral value is: 0.125" << std::endl;
+	Evaluator eval_square(solver.evaluate_function([](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];}, 1));
+	std::cout << "The integral is: " << eval_square.integrate()[0] << std::endl;
+	std::cout << "The true integral value is: 0.125" << std::endl;
 
 	// // solver.fill_seed([](int fn, double *x){
 	// // 	return std::cos(M_PI*x[0])*std::sin(M_PI*x[1])*std::cos(M_PI*x[2]);
