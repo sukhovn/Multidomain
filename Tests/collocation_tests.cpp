@@ -434,11 +434,30 @@ void collocation_2D_collocation_fill_test(const std::string &test_folder, int ar
 
 	cont.save(test_folder + "/colloc_simple");
 
-	std::cout << "The difference is: " << vector_max(solver.find_function_maximum(&Test_Equations::solution_check, 2)) << std::endl;
+	std::cout << "The difference is: " << vector_max(solver.find_function_maximum(&Test_Equations::solution_check, 2)) << '\n' << std::endl;
 
+	std::cout << "Integrating functions" << std::endl;
+	Evaluator eval(cont);
+	std::vector<double> integral = eval.integrate();
+	std::cout << "The integral error of function 0 is: " << integral[0] - 4.0/M_PI/M_PI << std::endl;
+	std::cout << "The integral error of function 1 is: " << integral[1] << '\n' << std::endl;
+
+	std::cout << "Integrating square" << std::endl;
 	Evaluator eval_square(solver.evaluate_function([](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];}, 1));
 	std::cout << "The integral is: " << eval_square.integrate()[0] << std::endl;
-	std::cout << "The true integral value is: 0.25" << std::endl;
+	std::cout << "The true integral value is: 0.25" << '\n' << std::endl;
+
+	std::cout << "Additional integral test" << std::endl;
+	Container cont_test(2, bpart);
+	cont_test.set_doubling_begin(0, {true, true});
+	cont_test.set_doubling_begin(1, {false, false});
+	cont_test.set_doubling_end(0, {true, true});
+	cont_test.set_doubling_end(1, {false, false});
+	cont_test.fill_function([](int fn, double *x){return (fn ? x[0]*(1.0 - x[0])*(1.0 - std::cos(2*M_PI*x[1])) : std::sin(M_PI*x[0])*x[1]*x[1]*(1.0 - x[1])*(1.0 - x[1]));});
+	integral = Evaluator(cont_test).integrate();
+	std::cout << "The integral error of function 0 is: " << integral[0] - 1.0/(15.0*M_PI) << std::endl;
+	std::cout << "The integral error of function 1 is: " << integral[1] - 1.0/6.0 << std::endl;
+	cont_test.save(test_folder + "/integral_test");
 
 	// solver.fill_seed(sin_func);
 	// Evaluator eval = solver.get_function_evaluator([](double *x, double *phi, double **dphi, double **ddphi){return -phi[0];});
@@ -565,7 +584,12 @@ void collocation_3D_collocation_fill_test(const std::string &test_folder, int ar
 	std::cout << "The difference is: " << vector_max(solver.find_function_maximum(&Test_Equations_3D::solution_check)) << std::endl;
 	Evaluator eval_square(solver.evaluate_function([](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];}, 1));
 	std::cout << "The integral is: " << eval_square.integrate()[0] << std::endl;
-	std::cout << "The true integral value is: 0.125" << std::endl;
+	std::cout << "The true integral value is: 0.125" << '\n' << std::endl;
+
+	std::cout << "Additional integration check" << std::endl;
+	cont.fill_function([](int fn, double *x){return 0.5*(1.0 - std::cos(2.0*M_PI*x[0]))*std::sin(M_PI*x[1])*x[2]*x[2];});
+	Evaluator eval(cont);
+	std::cout << "The integral error is: " << eval.integrate()[0] - 1.0/(3.0*M_PI) << std::endl;
 
 	// // solver.fill_seed([](int fn, double *x){
 	// // 	return std::cos(M_PI*x[0])*std::sin(M_PI*x[1])*std::cos(M_PI*x[2]);

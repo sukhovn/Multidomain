@@ -724,15 +724,6 @@ double Evaluator::d(int ddim, const std::vector<double> &coord, int fn) const{
 std::vector<double> Evaluator::integrate() const{
 	std::vector<double> total_sum(nfunc, 0.0);
 
-	for(int dim = 0; dim < n_dim; ++dim){
-		if(!std::none_of(parity_st[dim].begin(), parity_st[dim].end(), [](bool v){return v;}) ||
-			!std::none_of(parity_end[dim].begin(), parity_end[dim].end(), [](bool v){return v;}))
-		{
-			std::cout << "Integration of odd domains is not supported" << std::endl;
-			throw("Integration of odd domains is not supported");
-		}
-	}
-
 	for(const Bulk_Domain *dom = first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
 		std::vector<std::vector<double>> part_sum(n_dim);
 		std::fill(part_sum.begin(), part_sum.end(), std::vector<double>(nfunc, 0.0));
@@ -754,8 +745,15 @@ std::vector<double> Evaluator::integrate() const{
 
 		while(1){
 			for(int fn = 0; fn < nfunc; ++fn){
-				if(indx[n_dim-1])
-					part_sum[n_dim-1][fn] -= data[ind+fn]/(4.0*indx[n_dim-1]*indx[n_dim-1] - 1.0);
+				if(indx[n_dim-1]){
+					if(nx_run[n_dim-1] != dom->dim_num(n_dim-1) || ((parity_st[n_dim-1].empty() || !parity_st[n_dim-1][fn]) &&
+						(parity_end[n_dim-1].empty() || !parity_end[n_dim-1][fn])))
+					{
+						part_sum[n_dim-1][fn] -= data[ind+fn]/(4.0*indx[n_dim-1]*indx[n_dim-1] - 1.0);
+					}
+					else if(indx[n_dim-1]%2 == 0)
+						part_sum[n_dim-1][fn] -= data[ind+fn]/(indx[n_dim-1]*indx[n_dim-1] - 1.0);
+				}
 				else
 					part_sum[n_dim-1][fn] += 0.5*data[ind+fn];
 			}
@@ -769,8 +767,15 @@ std::vector<double> Evaluator::integrate() const{
 
 				if(dim){
 					for(int fn = 0; fn < nfunc; ++fn){
-						if(indx[dim-1])
-							part_sum[dim-1][fn] -= part_sum[dim][fn]/(4.0*indx[dim-1]*indx[dim-1] - 1.0);
+						if(indx[dim-1]){
+							if(nx_run[dim-1] != dom->dim_num(dim-1) || ((parity_st[dim-1].empty() || !parity_st[dim-1][fn]) &&
+								(parity_end[dim-1].empty() || !parity_end[dim-1][fn])))
+							{
+								part_sum[dim-1][fn] -= part_sum[dim][fn]/(4.0*indx[dim-1]*indx[dim-1] - 1.0);
+							}
+							else if(indx[dim-1]%2 == 0)
+								part_sum[dim-1][fn] -= part_sum[dim][fn]/(indx[dim-1]*indx[dim-1] - 1.0);
+						}
 						else
 							part_sum[dim-1][fn] += 0.5*part_sum[dim][fn];
 						part_sum[dim][fn] = 0.0;
@@ -787,7 +792,13 @@ std::vector<double> Evaluator::integrate() const{
 
 		for(int dim = 0; dim < n_dim; ++dim){
 			double factor = dom->domain_end(dim) - dom->domain_start(dim);
-			for(int fn = 0; fn < nfunc; ++fn) part_sum[0][fn] *= factor;
+			for(int fn = 0; fn < nfunc; ++fn){
+				part_sum[0][fn] *= factor;
+				if(!parity_st[dim].empty() && parity_st[dim][fn] && std::fabs(dom->domain_start(dim) - partition_start(dim)) < COMP_TOL)
+					part_sum[0][fn] *= -0.5;
+				if(!parity_end[dim].empty() && parity_end[dim][fn] && std::fabs(dom->domain_end(dim) - partition_end(dim)) < COMP_TOL)
+					part_sum[0][fn] *= 0.5;
+			}
 		}
 
 		for(int fn = 0; fn < nfunc; ++fn) total_sum[fn] += part_sum[0][fn];
