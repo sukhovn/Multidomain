@@ -443,7 +443,8 @@ void collocation_2D_collocation_fill_test(const std::string &test_folder, int ar
 	std::cout << "The integral error of function 1 is: " << integral[1] << '\n' << std::endl;
 
 	std::cout << "Integrating square" << std::endl;
-	Evaluator eval_square(solver.evaluate_function([](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];}, 1));
+	auto square_function = [](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];};
+	Evaluator eval_square(solver.evaluate_function(square_function, 1));
 	std::cout << "The integral is: " << eval_square.integrate()[0] << std::endl;
 	std::cout << "The true integral value is: 0.25" << '\n' << std::endl;
 
@@ -454,10 +455,35 @@ void collocation_2D_collocation_fill_test(const std::string &test_folder, int ar
 	cont_test.set_doubling_end(0, {true, true});
 	cont_test.set_doubling_end(1, {false, false});
 	cont_test.fill_function([](int fn, double *x){return (fn ? x[0]*(1.0 - x[0])*(1.0 - std::cos(2*M_PI*x[1])) : std::sin(M_PI*x[0])*x[1]*x[1]*(1.0 - x[1])*(1.0 - x[1]));});
-	integral = Evaluator(cont_test).integrate();
+	Evaluator eval_test(cont_test);
+	integral = eval_test.integrate();
 	std::cout << "The integral error of function 0 is: " << integral[0] - 1.0/(15.0*M_PI) << std::endl;
 	std::cout << "The integral error of function 1 is: " << integral[1] - 1.0/6.0 << std::endl;
-	cont_test.save(test_folder + "/integral_test");
+
+	std::cout << "Testing partial integration" << std::endl;
+	int size = 11;
+	double *xarr = new double[size];
+	double *yarr = new double[2*size];
+	for(int i = 0; i < size; ++i) xarr[i] = i/(1.0*(size-1));
+
+	eval_test.integrate_keep_first_dimension(size, xarr, yarr);
+
+	double max = 0.0, tmp;
+	for(int i = 0; i < size; ++i){
+		tmp = std::fabs(yarr[i] - std::sin(M_PI*xarr[i])/30.0);
+		if(max < tmp) max = tmp;
+	}
+	std::cout << "The maximal error of partial integral of the first function is: " << max << std::endl;
+
+	max = 0.0;
+	for(int i = 0; i < size; ++i){
+		tmp = std::fabs(yarr[size+i] - xarr[i]*(1.0 - xarr[i]));
+		if(max < tmp) max = tmp;
+	}
+	std::cout << "The maximal error of partial integral of the second function is: " << max << std::endl;
+
+	delete [] xarr;
+	delete [] yarr;
 
 	// solver.fill_seed(sin_func);
 	// Evaluator eval = solver.get_function_evaluator([](double *x, double *phi, double **dphi, double **ddphi){return -phi[0];});
@@ -582,14 +608,73 @@ void collocation_3D_collocation_fill_test(const std::string &test_folder, int ar
 	cont.save(test_folder + "/cont_test_3D");
 
 	std::cout << "The difference is: " << vector_max(solver.find_function_maximum(&Test_Equations_3D::solution_check)) << std::endl;
-	Evaluator eval_square(solver.evaluate_function([](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];}, 1));
+	auto square_function = [](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];};
+	Evaluator eval_square(solver.evaluate_function(square_function, 1));
 	std::cout << "The integral is: " << eval_square.integrate()[0] << std::endl;
 	std::cout << "The true integral value is: 0.125" << '\n' << std::endl;
 
 	std::cout << "Additional integration check" << std::endl;
-	cont.fill_function([](int fn, double *x){return 0.5*(1.0 - std::cos(2.0*M_PI*x[0]))*std::sin(M_PI*x[1])*x[2]*x[2];});
-	Evaluator eval(cont);
-	std::cout << "The integral error is: " << eval.integrate()[0] - 1.0/(3.0*M_PI) << std::endl;
+	Container cont_alt(2, bpart);
+	cont_alt.set_doubling_begin(0, {true, false});
+	cont_alt.set_doubling_begin(1, {false, true});
+	cont_alt.set_doubling_begin(2, {true, false});
+	cont_alt.set_doubling_end(0, {true, false});
+
+	cont_alt.fill_function([](int fn, double *x){
+		if(fn == 0)
+			return std::sin(M_PI*x[0])*x[1]*x[1]*std::sin(M_PI*x[2]);
+		else
+			return 0.5*(1.0 - std::cos(2.0*M_PI*x[0]))*std::sin(M_PI*x[1])*x[2]*x[2];
+	});
+
+	Evaluator eval(cont_alt);
+	auto integral = eval.integrate();
+	std::cout << "The integral error of the first function is: " << integral[0] - 4.0/(3.0*M_PI*M_PI) << std::endl;
+	std::cout << "The integral error of the second function is: " << integral[1] - 1.0/(3.0*M_PI) << '\n' << std::endl;
+
+	std::cout << "Testing partial integration" << std::endl;
+	int size = 11;
+	double *xarr = new double[size];
+	double *yarr = new double[2*size];
+	for(int i = 0; i < size; ++i) xarr[i] = i/(1.0*(size-1));
+
+	eval.integrate_keep_first_dimension(size, xarr, yarr);
+
+	double max = 0.0, tmp;
+	for(int i = 0; i < size; ++i){
+		tmp = std::fabs(yarr[i] - 2.0*std::sin(M_PI*xarr[i])/(3.0*M_PI));
+		if(max < tmp) max = tmp;
+	}
+	std::cout << "The maximal error of partial integral of the first function is: " << max << std::endl;
+
+	max = 0.0;
+	for(int i = 0; i < size; ++i){
+		tmp = std::fabs(yarr[size+i] - (1.0 - std::cos(2.0*M_PI*xarr[i]))/(3.0*M_PI));
+		if(max < tmp) max = tmp;
+	}
+	std::cout << "The maximal error of partial integral of the second function is: " << max << std::endl;
+
+	delete [] xarr;
+	delete [] yarr;
+
+	// Domain_Partitioning part_test({0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}, {20, 20, 20});
+	// // Domain_Partitioning part_test("Tests/domains_2D_test.dat");
+	// Container cont_test(1, part_test);
+	// // cont_test.set_doubling_begin(1, {true});
+	// cont_test.set_doubling_end(0, {true});
+	// cont_test.fill_function([](int fn, double *x){return 4.0*std::pow(1.0 - x[0], 3.0)*x[1]*x[2];});
+	// Evaluator eval_test(cont_test);
+
+	// double *xarr = new double[11];
+	// double *yarr = new double[11];
+	// for(int i = 0; i < 11; ++i) xarr[i] = 0.1*i;
+
+	// eval_test.integrate_keep_first_dimension(11, xarr, yarr);
+	// for(int i = 0; i < 11; ++i)
+	// 	std::cout << xarr[i] << ", " << yarr[i] << std::endl;
+
+	// delete [] xarr;
+	// delete [] yarr;
 
 	// // solver.fill_seed([](int fn, double *x){
 	// // 	return std::cos(M_PI*x[0])*std::sin(M_PI*x[1])*std::cos(M_PI*x[2]);

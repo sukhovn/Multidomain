@@ -84,7 +84,7 @@ public:
 	}
 
 	template<class Callable>
-	Container evaluate_function(Callable func, int nfunc_fill, double value_at_infinity = 0.0){
+	Container evaluate_function(Callable &func, int nfunc_fill, double value_at_infinity = 0.0){
 		verify_container_solution_correspondence();
 
 		Container result(nfunc_fill, cont->partition);
@@ -106,7 +106,7 @@ public:
 				}
 				if(pnt.get_point(dom->bulk_domain_number, ind, true)){
 					for(int fn = 0; fn < nfunc_fill; ++fn)
-						result.data[indx++] = 0.0;
+						result.data[indx++] = value_at_infinity;
 				}
 				else{
 					for(int fn = 0; fn < nfunc_fill; ++fn){

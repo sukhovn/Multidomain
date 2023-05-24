@@ -29,7 +29,8 @@ void collocation_2D_collocation_test_solution(const std::string &test_folder, in
 	std::cout << "The solution difference is: " << vector_max(solver.find_function_maximum(&Cylindric_Test::solution_check, 2, false)) << std::endl;
 	cont.save(test_folder + "/colloc_compact");
 
-	Evaluator eval_square(solver.evaluate_function([](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];}, 1));
+	auto square_function = [](int fn, double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];};
+	Evaluator eval_square(solver.evaluate_function(square_function, 1));
 	std::cout << "The integral is: " << eval_square.integrate()[0] << std::endl;
 	std::cout << "The true integral value is: " << 3.0*M_PI/(16.0*a_param*a_param*a_param) << std::endl;
 }
