@@ -4,8 +4,8 @@
 class No_Compactification{
 public:
 	double xc(int dm, double *x) const {return x[dm];}
-	double dxc(int dm, double *x) const {return 1.0;}
-	double ddxc(int dm, double *x)const {return 0.0;}
+	double dxc(int dnum, int dm, double *x) const {return 1.0;}
+	double ddxc(int dnum, int dm, double *x)const {return 0.0;}
 
 	double xc_inv(int dm, double *x) const{return x[dm];}
 };

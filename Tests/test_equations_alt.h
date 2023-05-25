@@ -9,19 +9,26 @@ private:
 	int dim;
 	double xst;
 	double cc;
-public:
-	Single_Compactification(double _xst, double _xend, int _dim = 0): xst(_xst), cc(1.0/(_xend - _xst)), dim(_dim) {};
 
-	Single_Compactification(const Container &cont, int _dim = 0, bool print_selection = false): dim(_dim), xst(cont.partition.partition_start(_dim)) {
+	std::vector<bool> domains_compactified;
+public:
+	Single_Compactification(const Container &cont, int _dim = 0, bool print_selection = false): dim(_dim), xst(cont.partition.partition_start(_dim)){
+		int ndomains = 0;
 		double xend = cont.partition.partition_end(dim);
 		for(const Bulk_Domain *dom = cont.partition.first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
 			if(dom->domain_start(dim) > xst) xst = dom->domain_start(dim);
+			++ndomains;
+			domains_compactified.push_back(false);
 		}
 		if(print_selection){
 			std::cout << "Selected compactification region:" << std::endl;
 			std::cout << "Dimension " << dim << ": [" << xst << ',' << xend << ']' << std::endl;
 		}
 		cc = 1.0/(xend - xst);
+		for(const Bulk_Domain *dom = cont.partition.first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+			if(dom->domain_end(dim) > xst + COMP_TOL)
+				domains_compactified[dom->bulk_domain_number] = true;
+		}
 	}
 
 	double xc(int dm, double *x) const{
@@ -35,10 +42,11 @@ public:
 			return x[dm];
 	}
 
-	double dxc(int dm, double *x) const{
+	double dxc(int dnum, int dm, double *x) const{
+		if(!domains_compactified[dnum])
+			return 1.0;
 		if(dm == dim){
 			double xshift = x[dim] - xst;
-			if(xshift <= 0.0) return 1.0;
 			if(xshift*cc >= 1.0) return std::numeric_limits<double>::infinity();
 			return 1.0/std::pow(1 - xshift*cc, 2.0);
 		}
@@ -46,10 +54,11 @@ public:
 			return 1.0;
 	}
 
-	double ddxc(int dm, double *x) const{
+	double ddxc(int dnum, int dm, double *x) const{
+		if(!domains_compactified[dnum])
+			return 0.0;
 		if(dm == dim){
 			double xshift = x[dim] - xst;
-			if(xshift <= 0.0) return 0.0;
 			if(xshift*cc == 1.0) return std::numeric_limits<double>::infinity();
 			return 2.0 * cc/std::pow(1 - xshift*cc, 3.0);
 		}
@@ -75,17 +84,8 @@ private:
 	std::vector<double> cc;
 
 public:
-	Full_Compactification(const std::vector<double> &_xst, const std::vector<double> &xend): cc(_xst.size()), xst(_xst) {
-		if(xst.size() != xend.size()){
-			std::cout << "Compactification region dimension mismatch" << std::endl;
-			throw("Compactification region dimension mismatch");
-		}
-		for(int i = 0; i < xst.size(); ++i)
-			cc[i] = 1.0/(xend[i] - xst[i]);
-	};
-
 	// Automatically selects compactification region to match partition's outmost domains
-	Full_Compactification(const Container &cont, bool print_selection = false): cc(cont.partition.n_dim), xst(cont.partition.partition_start()) {
+	Full_Compactification(const Container &cont, bool print_selection = false): cc(cont.partition.n_dim), xst(cont.partition.partition_start()){
 		std::vector<double> xend(cont.partition.partition_end());
 		for(const Bulk_Domain *dom = cont.partition.first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
 			for(int dim = 0; dim < cont.partition.n_dim; ++dim)
@@ -107,13 +107,13 @@ public:
 		if(xshift*cc[dm] >= 1.0) return std::numeric_limits<double>::infinity();
 		return xst[dm] + xshift/(1 - xshift*cc[dm]);
 	}
-	double dxc(int dm, double *x) const{
+	double dxc(int dnum, int dm, double *x) const{
 		double xshift = x[dm] - xst[dm];
 		if(xshift <= 0.0) return 1.0;
 		if(xshift*cc[dm] >= 1.0) return std::numeric_limits<double>::infinity();
 		return 1.0/std::pow(1 - xshift*cc[dm], 2.0);
 	}
-	double ddxc(int dm, double *x) const{
+	double ddxc(int dnum, int dm, double *x) const{
 		double xshift = x[dm] - xst[dm];
 		if(xshift <= 0.0) return 0.0;
 		if(xshift*cc[dm] >= 1.0) return std::numeric_limits<double>::infinity();
