@@ -54,8 +54,8 @@ bool check_adjacency(const Generic_Domain *dom1, const Generic_Domain *dom2){
 	else return true;
 }
 
-void drop_zero_volume_domains(std::vector<Generic_Domain*> &list){
-	std::vector<Generic_Domain*> new_list;
+void drop_zero_volume_domains(std::vector<const Generic_Domain*> &list){
+	std::vector<const Generic_Domain*> new_list;
 	for(int i = 0; i < list.size(); i++){
 		if(!list[i]->is_zero_volume()) new_list.push_back(list[i]);
 	}
@@ -225,7 +225,7 @@ void Generic_Domain_Partitioning::load_domains(const std::string &file_name){
 	return;
 }
 
-void Generic_Domain_Partitioning::list_domains(int dm, std::vector<double> &posit, std::vector<Generic_Domain*> &layer) const{
+void Generic_Domain_Partitioning::list_domains(int dm, std::vector<double> &posit, std::vector<const Generic_Domain*> &layer) const{
 	layer.resize(0);
 	Generic_Domain *domain_tmp = first_dom;
 
@@ -285,7 +285,7 @@ void Generic_Domain_Partitioning::list_domains(int dm, std::vector<double> &posi
 void Generic_Domain_Partitioning::verify_consistency(void) const{
 	std::vector<double> current_coord(part_start);
 	std::vector<double> next_coord(part_end);
-	std::vector<Generic_Domain*> layer;
+	std::vector<const Generic_Domain*> layer;
 
 	int dim_change = 0;
 
@@ -321,31 +321,42 @@ void Generic_Domain_Partitioning::print_domain_2D(const std::string &file_name, 
 	out.open(file_name);
 
 	int icurr = 0, inext;
-	std::vector<Generic_Domain*> layer;
+	std::vector<const Generic_Domain*> layer;
 	std::vector<double> posit(ndim);
 	for(int i = 0; i < ndim; i++){
-		if(i == dim_i || i == dim_j) continue;
+		if(i == dim_j || i == dim_i) continue;
 		posit[i] = posit_st[icurr++];
 	}
+	posit[dim_j] = part_end[dim_j];
 	posit[dim_i] = part_start[dim_i];
-	posit[dim_j] = part_start[dim_j];
 	icurr = 0;
 
 	double coord_next;
 
 	out << "P1\n" << size_x << " " << size_y << std::endl;
 
-	while(posit[dim_i] < part_end[dim_i]){
-		list_domains(dim_j, posit, layer);
-		drop_zero_volume_domains(layer);
-		int nlayer = layer.size();
+	while(posit[dim_j] > part_start[dim_j]){
+		layer.clear();
+		for(const Generic_Domain *dom = first_dom; dom != NULL; dom = dom->dom_next){
+			bool in_layer = true;
+			for(int i = 0; i < ndim; i++){
+				if(i == dim_i) continue;
+				if(posit[i] <= dom->dom_start[i] || posit[i] > dom->dom_end[i] + COMP_TOL){
+					in_layer = false;
+					break;
+				}
+			}
+			if(in_layer && !dom->is_zero_volume()) layer.push_back(dom);
+		}
+		std::sort(layer.begin(), layer.end(), [dim_i](const Generic_Domain *dom_i, const Generic_Domain *dom_j){return dom_i->dom_start[dim_i] < dom_j->dom_start[dim_i];});
 
+		int nlayer = layer.size();
 		std::vector<int> jbound(nlayer+1);
 		int ist, iend;
 
 		//Getting y boundaries
 		for(int dmi = 0; dmi < nlayer; dmi++){
-			jbound[dmi] = (int) size_y*(layer[dmi]->dom_start[dim_j] - part_start[dim_j])/(part_end[dim_j] - part_start[dim_j]);
+			jbound[dmi] = (int) size_y*(layer[dmi]->dom_start[dim_i] - part_start[dim_i])/(part_end[dim_i] - part_start[dim_i]);
 		}
 		jbound[nlayer] = size_y-1;
 
@@ -356,7 +367,7 @@ void Generic_Domain_Partitioning::print_domain_2D(const std::string &file_name, 
 		//Drawing y boundaries
 		for(int dmi = 0; dmi < nlayer; dmi++){
 			out << "1";
-			if(layer[dmi]->dom_start[dim_i] == posit[dim_i]){
+			if(layer[dmi]->dom_end[dim_j] == posit[dim_j]){
 				for(int j = jbound[dmi]+1; j < jbound[dmi+1]; j++) out << "1";
 			}
 			else{
@@ -366,11 +377,11 @@ void Generic_Domain_Partitioning::print_domain_2D(const std::string &file_name, 
 		out << "1\n";
 
 		//Getting the x coordinate of next y boundaries
-		coord_next = layer[0]->dom_end[dim_i];
+		coord_next = layer[0]->dom_start[dim_j];
 		for(int i = 1; i < layer.size(); i++)
-			if(layer[i]->dom_end[dim_i] < coord_next && layer[i]->dom_start[dim_i] != layer[i]->dom_end[dim_i])
-				coord_next = layer[i]->dom_end[dim_i]; 
-		inext = (int) size_x*(coord_next - part_start[dim_i])/(part_end[dim_i] - part_start[dim_i]);
+			if(layer[i]->dom_start[dim_j] > coord_next && layer[i]->dom_start[dim_j] != layer[i]->dom_end[dim_j])
+				coord_next = layer[i]->dom_start[dim_j];
+		inext = (int) size_x*(part_end[dim_j] - coord_next)/(part_end[dim_j] - part_start[dim_j]);
 
 		//Drawing y boundaries
 		for(int i = icurr; i < inext; i++){
@@ -381,7 +392,7 @@ void Generic_Domain_Partitioning::print_domain_2D(const std::string &file_name, 
 			out << "1\n";
 		}
 
-		posit[dim_i] = coord_next;
+		posit[dim_j] = coord_next;
 		icurr = inext;
 	}
 
@@ -406,7 +417,7 @@ void Generic_Domain_Partitioning::print_domain_3D(const std::string &folder_name
 	std::ofstream out;
 
 	int icurr = 0, inext, nplot = 0;
-	std::vector<Generic_Domain*> layer;
+	std::vector<const Generic_Domain*> layer;
 	std::vector<double> posit(part_start);
 
 	std::string file_name;
