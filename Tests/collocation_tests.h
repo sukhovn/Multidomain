@@ -3,6 +3,7 @@
 #include <boundaries.h>
 #include <container.h>
 #include <collocation_solver_full.h>
+#include <collocation_routines.h>
 
 #ifndef COLLOCATION_2D_TEST_H
 #define COLLOCATION_2D_TEST_H

@@ -480,45 +480,23 @@ void collocation_2D_collocation_fill_test(const std::string &test_folder, int ar
 		tmp = std::fabs(yarr[size+i] - xarr[i]*(1.0 - xarr[i]));
 		if(max < tmp) max = tmp;
 	}
-	std::cout << "The maximal error of partial integral of the second function is: " << max << std::endl;
+	std::cout << "The maximal error of partial integral of the second function is: " << max << '\n' << std::endl;
 
 	delete [] xarr;
 	delete [] yarr;
 
-	// solver.fill_seed(sin_func);
-	// Evaluator eval = solver.get_function_evaluator([](double *x, double *phi, double **dphi, double **ddphi){return -phi[0];});
-
-	// Container cont_test(1, bpart);
-	// cont_test.fill_function([](int fi, double *x){return -sin_func(fi, x);});
-	// eval.test(cont_test);
-
-	// Collocation_Nelder_Mead minimizer(eval);
-	// minimizer.safe_minimization();
-	// std::cout << "Maximal function value: " << -minimizer.min_val << std::endl;
-	// std::cout << "Maximal value occured at: (" << minimizer.min_x[0] << ", " << minimizer.min_x[1] << ")" << std::endl;
-
-	// int n_test = 30;
-	// Evaluator_1D_Spec eval1d(n_test);
-
-	// std::cout << "Incomplete integral test along dimension 0" << std::endl;
-	// fill_integral<No_Compactification>(
-	// 	eval1d,
-	// 	solver,
-	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0];},
-	// 	0
-	// );
-
-	// eval1d.compare_test([](double x){return 2.0/M_PI/M_PI*(1.0 - std::cos(M_PI*x));});
-
-	// std::cout << "Incomplete integral test along dimension 1" << std::endl;
-	// fill_integral<No_Compactification>(
-	// 	eval1d,
-	// 	solver,
-	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0];},
-	// 	1
-	// );
-
-	// eval1d.compare_test([](double x){return 2.0/M_PI/M_PI*(1.0 - std::cos(M_PI*x));});
+	auto inv_function = [](int fn, double *x, double *phi, double **dphi, double **ddphi){return -phi[0];};
+	Container func_min = solver.evaluate_function(inv_function, 1);
+	func_min.set_doubling_begin(0, {true});
+	func_min.set_doubling_begin(1, {true});
+	func_min.set_doubling_end(0, {true});
+	func_min.set_doubling_end(1, {true});
+	std::cout << "Evaluating minimum" << std::endl;
+	Evaluator eval_min(func_min);
+	Collocation_Nelder_Mead minimizer(eval_min);
+	minimizer.safe_minimization();
+	std::cout << "Maximal function value: " << -minimizer.min_val << std::endl;
+	std::cout << "Maximal value occured at: (" << minimizer.min_x[0] << ", " << minimizer.min_x[1] << ")" << std::endl;
 }
 
 
@@ -652,75 +630,22 @@ void collocation_3D_collocation_fill_test(const std::string &test_folder, int ar
 		tmp = std::fabs(yarr[size+i] - (1.0 - std::cos(2.0*M_PI*xarr[i]))/(3.0*M_PI));
 		if(max < tmp) max = tmp;
 	}
-	std::cout << "The maximal error of partial integral of the second function is: " << max << std::endl;
+	std::cout << "The maximal error of partial integral of the second function is: " << max << '\n' << std::endl;
 
 	delete [] xarr;
 	delete [] yarr;
 
-	// Domain_Partitioning part_test({0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}, {20, 20, 20});
-	// // Domain_Partitioning part_test("Tests/domains_2D_test.dat");
-	// Container cont_test(1, part_test);
-	// // cont_test.set_doubling_begin(1, {true});
-	// cont_test.set_doubling_end(0, {true});
-	// cont_test.fill_function([](int fn, double *x){return 4.0*std::pow(1.0 - x[0], 3.0)*x[1]*x[2];});
-	// Evaluator eval_test(cont_test);
+	auto inv_function = [](int fn, double *x, double *phi, double **dphi, double **ddphi){return -phi[0];};
+	Container func_min = solver.evaluate_function(inv_function, 1);
+	func_min.set_doubling_begin(0, {false});
+	func_min.set_doubling_begin(1, {true});
+	func_min.set_doubling_begin(2, {false});
+	func_min.set_doubling_end(0, {false});
+	std::cout << "Evaluating minimum" << std::endl;
+	Evaluator eval_min(func_min);
 
-	// double *xarr = new double[11];
-	// double *yarr = new double[11];
-	// for(int i = 0; i < 11; ++i) xarr[i] = 0.1*i;
-
-	// eval_test.integrate_keep_first_dimension(11, xarr, yarr);
-	// for(int i = 0; i < 11; ++i)
-	// 	std::cout << xarr[i] << ", " << yarr[i] << std::endl;
-
-	// delete [] xarr;
-	// delete [] yarr;
-
-	// // solver.fill_seed([](int fn, double *x){
-	// // 	return std::cos(M_PI*x[0])*std::sin(M_PI*x[1])*std::cos(M_PI*x[2]);
-	// // });
-
-	// Evaluator eval = solver.get_function_evaluator([](double *x, double *phi, double **dphi, double **ddphi){return -phi[0];});
-	// Collocation_Nelder_Mead minimizer(eval);
-	// minimizer.safe_minimization();
-	// std::cout << "Maximal function value: " << -minimizer.min_val << std::endl;
-	// std::cout << "Maximal value occured at: (" << minimizer.min_x[0] << ", " << minimizer.min_x[1] << ", " << minimizer.min_x[2] << ")" << std::endl;
-
-	// int int_dim;
-	// int n_test = 30;
-
-	// Evaluator_1D_Spec eval1d(n_test);
-
-	// //Dimension 0
-	// fill_integral<No_Compactification>(
-	// 	eval1d,
-	// 	solver,
-	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];},
-	// 	0
-	// );
-
-	// std::cout << "Incomplete integral test along dimension 0" << std::endl;
-	// eval1d.compare_test([](double x){return 0.125*(x + std::sin(2.0*M_PI*x)/(2.0*M_PI));});
-
-	// //Dimension 1
-	// fill_integral<No_Compactification>(
-	// 	eval1d,
-	// 	solver,
-	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];},
-	// 	1
-	// );
-
-	// std::cout << "Incomplete integral test along dimension 1" << std::endl;
-	// eval1d.compare_test([](double x){return 0.125*(x - std::sin(2.0*M_PI*x)/(2.0*M_PI));});
-
-	// //Dimension 2
-	// fill_integral<No_Compactification>(
-	// 	eval1d,
-	// 	solver,
-	// 	[](double *x, double *phi, double **dphi, double **ddphi){return phi[0]*phi[0];},
-	// 	2
-	// );
-
-	// std::cout << "Incomplete integral test along dimension 2" << std::endl;
-	// eval1d.compare_test([](double x){return 0.125*(x + std::sin(2.0*M_PI*x)/(2.0*M_PI));});
+	Collocation_Nelder_Mead minimizer(eval_min);
+	minimizer.safe_minimization();
+	std::cout << "Maximal function value: " << -minimizer.min_val << std::endl;
+	std::cout << "Maximal value occured at: (" << minimizer.min_x[0] << ", " << minimizer.min_x[1] << ", " << minimizer.min_x[2] << ")" << std::endl;
 }

@@ -1,5 +1,6 @@
 #include <test_equations_alt.h>
 #include <collocation_solver_full.h>
+#include <collocation_routines.h>
 
 #ifndef SOLVER_TEST_H
 #define SOLVER_TEST_H

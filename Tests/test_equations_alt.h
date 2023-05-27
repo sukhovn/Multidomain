@@ -84,11 +84,15 @@ private:
 	std::vector<double> cc;
 
 public:
-	// Automatically selects compactification region to match partition's outmost domains
-	Full_Compactification(const Container &cont, bool print_selection = false): cc(cont.partition.n_dim), xst(cont.partition.partition_start()){
-		std::vector<double> xend(cont.partition.partition_end());
-		for(const Bulk_Domain *dom = cont.partition.first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
-			for(int dim = 0; dim < cont.partition.n_dim; ++dim)
+	void adjust_compactification(const Domain_Partitioning &part, bool print_selection = false){
+		if(part.n_dim != cc.size()){
+			std::cout << "Changing number of dimensions while adjusting partitioning is not permitted" << std::endl;
+			throw("Changing dimensions prohibited");
+		}
+		xst = part.partition_start();
+		std::vector<double> xend(part.partition_end());
+		for(const Bulk_Domain *dom = part.first_bulk_domain; dom != NULL; dom = dom->next_bulk_domain()){
+			for(int dim = 0; dim < part.n_dim; ++dim)
 				if(dom->domain_start(dim) > xst[dim]) xst[dim] = dom->domain_start(dim);
 		}
 		if(print_selection){
@@ -100,6 +104,12 @@ public:
 		for(int i = 0; i < xst.size(); ++i)
 			cc[i] = 1.0/(xend[i] - xst[i]);
 	}
+
+	// Automatically selects compactification region to match partition's outmost domains
+	Full_Compactification(const Domain_Partitioning &part, bool print_selection = false): cc(part.n_dim){
+		adjust_compactification(part, print_selection);
+	}
+	Full_Compactification(const Full_Compactification &compact): xst(compact.xst), cc(compact.cc) {};
 
 	double xc(int dm, double *x) const{
 		double xshift = x[dm] - xst[dm];
@@ -121,6 +131,7 @@ public:
 	}
 	double xc_inv(int dm, double *x) const{
 		double xshift = x[dm] - xst[dm];
+		if(xshift <= 0.0) return x[dm];
 		return xst[dm] + xshift/(1 + xshift*cc[dm]);
 	}
 };
